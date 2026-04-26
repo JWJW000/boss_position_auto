@@ -13,5 +13,5 @@ pub mod utils;
 
 
 pub use boss::BossClient;
-pub use excel::{ExcelReader, JobRecord};
+pub use excel::{ExcelReader, JobRecord, FailedJob, export_failed_jobs};
 pub use poster::Poster;

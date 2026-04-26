@@ -11,6 +11,7 @@ pub(crate) struct ColIdx {
     pub(crate) 职位名称: usize,
     pub(crate) 职位描述: usize,
     pub(crate) 是否急招: Option<usize>,
+    pub(crate) 是否驻外: Option<usize>,
     pub(crate) 职位类型: usize,
     pub(crate) 经验: Option<usize>,
     pub(crate) 城市: usize,
@@ -21,10 +22,9 @@ pub(crate) struct ColIdx {
     pub(crate) 薪资单位: Option<usize>,
     pub(crate) 结算方式: Option<usize>,
     pub(crate) 关键词: usize,
-    pub(crate) 福利: Option<usize>,
     pub(crate) 届别: Option<usize>,
-    pub(crate) 实习时长: Option<usize>,
-    pub(crate) 其他说明: Option<usize>,
+    pub(crate) 最少实习月数: Option<usize>,
+    pub(crate) 最少周到岗天数: Option<usize>,
     pub(crate) 截止日期: Option<usize>,
 }
 
@@ -64,7 +64,8 @@ impl ColIdx {
             招聘类型: get!("招聘类型"),
             职位名称: get!("职位名称"),
             职位描述: get!("职位描述"),
-            是否急招: idx.get("是否急招").copied().or_else(|| idx.get("是否驻外").copied()),
+            是否急招: idx.get("是否急招").copied(),
+            是否驻外: idx.get("是否驻外").copied(),
             职位类型: get!("职位类型"),
             经验: idx.get("经验").copied().or_else(|| idx.get("工作经验").copied()),
             城市: city_idx,
@@ -75,10 +76,9 @@ impl ColIdx {
             薪资单位: find_any(&idx, &["薪资单位", "计薪单位", "薪资类型"]),
             结算方式: find_any(&idx, &["结算方式", "兼职结算方式"]),
             关键词: get!("职位关键词"),
-            福利: idx.get("公司福利").copied(),
             届别: graduate_idx,
-            实习时长: idx.get("实习时长").copied().or_else(|| idx.get("最少实习月数").copied()),
-            其他说明: idx.get("其他说明").copied().or_else(|| idx.get("最少周到岗天数").copied()),
+            最少实习月数: idx.get("最少实习月数").copied().or_else(|| idx.get("实习时长").copied()),
+            最少周到岗天数: idx.get("最少周到岗天数").copied().or_else(|| idx.get("其他说明").copied()),
             截止日期: idx.get("招聘截止").copied().or_else(|| idx.get("招聘截止时间").copied()),
         })
     }

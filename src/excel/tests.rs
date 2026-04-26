@@ -49,10 +49,9 @@ fn detect_optional_columns_missing_should_not_use_first_column() {
     assert_eq!(record.关键词, "Java Spring");
     assert_eq!(record.是否急招, "");
     assert_eq!(record.薪资备注, "");
-    assert_eq!(record.福利, "");
     assert_eq!(record.届别, "");
-    assert_eq!(record.实习时长, "");
-    assert_eq!(record.其他说明, "");
+    assert_eq!(record.最少实习月数, "");
+    assert_eq!(record.最少周到岗天数, "");
     assert_eq!(record.截止日期, "");
 }
 
@@ -100,7 +99,7 @@ fn detect_real_headers_should_parse_sample_row() {
     let record = parse_row(&row, &cols);
     assert_eq!(record.招聘类型, "实习生招聘");
     assert_eq!(record.职位名称, "Java工程师-实习（J15117）");
-    assert_eq!(record.是否急招, "境内岗位");
+    assert_eq!(record.是否驻外, "境内岗位");
     assert_eq!(record.职位类型, "Java");
     assert_eq!(record.经验, "在校/应届");
     assert_eq!(record.学历, "本科");
@@ -112,8 +111,8 @@ fn detect_real_headers_should_parse_sample_row() {
     assert_eq!(record.关键词, "Java Spring Mysql");
     assert_eq!(record.城市, "北京海淀区中国外文大厦A座3层");
     assert_eq!(record.届别, "无");
-    assert_eq!(record.实习时长, "3个月");
-    assert_eq!(record.其他说明, "5天");
+    assert_eq!(record.最少实习月数, "3个月");
+    assert_eq!(record.最少周到岗天数, "5天");
     assert_eq!(record.截止日期, "无");
 }
 

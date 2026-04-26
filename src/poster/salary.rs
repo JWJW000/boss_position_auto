@@ -2,58 +2,62 @@ use super::*;
 
 impl<'a> Poster<'a> {
     /// Fill salary controls according to the selected recruitment type.
+    /// 这个方法仅用于向后兼容，实际的薪资填写逻辑已经在各个独立的招聘类型文件中实现
     pub(super) fn fill_salary(&mut self, job: &JobRecord, kind: RecruitmentKind) -> BResult<()> {
         match kind {
             RecruitmentKind::FullTime | RecruitmentKind::Campus => self.fill_month_salary(job),
-            RecruitmentKind::Intern => self.fill_intern_salary(job),
-            RecruitmentKind::PartTime => self.fill_part_time_salary(job),
+            RecruitmentKind::Intern => {
+                // 实习生薪资填写已在 internship.rs 中的 fill_intern_salary 实现
+                // 这里保留空实现以避免编译错误
+                Ok(())
+            },
+            RecruitmentKind::PartTime => {
+                // 兼职薪资填写已在 parttime.rs 中的 fill_part_time_salary 实现
+                // 这里保留空实现以避免编译错误
+                Ok(())
+            },
         }
     }
 
     /// Fill the full-time or campus minimum monthly salary dropdown.
     fn fill_month_salary(&mut self, job: &JobRecord) -> BResult<()> {
         let low = Self::salary_number(&job.薪资低);
-        if !Self::has_excel_value(&low) {
-            return Ok(());
-        }
-        Self::log_ignored_salary_unit(&job.薪资单位, "社招/校招薪资默认按月");
-        self.choose_salary_candidates(0, &Self::monthly_salary_candidates(&low), "最低月薪")?;
-        log::info!("  [√] 最低月薪: {}k", low);
-        Ok(())
-    }
-
-    /// Fill the internship daily salary range dropdowns.
-    fn fill_intern_salary(&mut self, job: &JobRecord) -> BResult<()> {
-        let low = Self::salary_number(&job.薪资低);
         let high = Self::salary_number(&job.薪资高);
-        if Self::has_excel_value(&low) {
-            self.choose_salary_candidates(0, &Self::daily_salary_candidates(&low), "实习薪资下限")?;
-        }
-        if Self::has_excel_value(&high) {
-            self.choose_salary_candidates(1, &Self::daily_salary_candidates(&high), "实习薪资上限")?;
-        }
-        Self::log_ignored_salary_unit(&job.薪资单位, "实习薪资默认按天");
-        if Self::has_excel_value(&low) || Self::has_excel_value(&high) {
-            log::info!("  [√] 实习薪资: {}-{}元/天", low, high);
-        }
-        Ok(())
-    }
 
-    /// Fill part-time salary range and optional salary unit.
-    fn fill_part_time_salary(&mut self, job: &JobRecord) -> BResult<()> {
-        let low = Self::salary_number(&job.薪资低);
-        let high = Self::salary_number(&job.薪资高);
         if Self::has_excel_value(&low) {
-            self.choose_salary_candidates(0, &Self::daily_salary_candidates(&low), "兼职薪资下限")?;
+            let start = self.page
+                .ele(".margin-r-15 .ui-select-selection")
+                .map_err(BossError::map_element("未找到起始薪资下拉框按钮"))?
+                .ok_or_else(|| BossError::element("下拉框不存在"))?;
+            start.click()
+                .map_err(BossError::map_element("点击起始薪资下拉框失败"))?;
+
+            let items = self.page.eles(".ui-select-item")?;
+            for item in items {
+                let text = item.text()?;
+                if text.trim() == low {
+                    item.click()?;
+                    break;
+                }
+            }
         }
+
         if Self::has_excel_value(&high) {
-            self.choose_salary_candidates(1, &Self::daily_salary_candidates(&high), "兼职薪资上限")?;
-        }
-        if Self::has_excel_value(&job.薪资单位) {
-            self.choose_salary_candidates(2, &[job.薪资单位.trim().to_string()], "兼职薪资单位")?;
-        }
-        if Self::has_excel_value(&low) || Self::has_excel_value(&high) {
-            log::info!("  [√] 兼职薪资: {}-{}{}", low, high, job.薪资单位.trim());
+            let end = self.page
+                .ele(".salary-select .ui-select-selection")
+                .map_err(BossError::map_element("未找到截止薪资下拉框按钮"))?
+                .ok_or_else(|| BossError::element("下拉框不存在"))?;
+            end.click()
+                .map_err(BossError::map_element("点击截止薪资下拉框失败"))?;
+
+            let items = self.page.eles(".ui-select-item")?;
+            for item in items {
+                let text = item.text()?;
+                if text.trim() == high {
+                    item.click()?;
+                    break;
+                }
+            }
         }
         Ok(())
     }
@@ -77,20 +81,6 @@ impl<'a> Poster<'a> {
         )))
     }
 
-    /// Try multiple salary option labels against the same dropdown index.
-    fn choose_salary_candidates(&mut self, index: usize, candidates: &[String], label: &str) -> BResult<()> {
-        for candidate in candidates {
-            if self.choose_row_select_option("薪资范围", index, candidate)? {
-                return Ok(());
-            }
-        }
-        Err(BossError::element(format!(
-            "{}选项未找到: {}",
-            label,
-            candidates.join("/")
-        )))
-    }
-
     /// Remove salary unit suffixes so Excel can contain either `10` or `10k`.
     fn salary_number(value: &str) -> String {
         value
@@ -102,29 +92,6 @@ impl<'a> Poster<'a> {
             .replace("元/周", "")
             .trim()
             .to_string()
-    }
-
-    /// Build possible labels for monthly salary dropdowns.
-    fn monthly_salary_candidates(value: &str) -> Vec<String> {
-        vec![format!("{}k", value), value.to_string()]
-    }
-
-    /// Build candidate labels used by intern/part-time daily salary dropdowns.
-    fn daily_salary_candidates(value: &str) -> Vec<String> {
-        let raw = value.trim();
-        if raw.is_empty() {
-            return Vec::new();
-        }
-        let candidates = vec![
-            raw.to_string(),
-            format!("{}元", raw),
-            format!("{}元/天", raw),
-            format!("{}元/时", raw),
-            format!("{}元/小时", raw),
-            format!("{}元/月", raw),
-            format!("{}k", raw),
-        ];
-        Self::dedup_candidates(candidates)
     }
 
     /// Build candidate labels for settlement dropdown values.
@@ -174,12 +141,5 @@ impl<'a> Poster<'a> {
             out.push(value);
         }
         out
-    }
-
-    /// Log salary-unit values that are intentionally ignored outside part-time postings.
-    fn log_ignored_salary_unit(unit: &str, reason: &str) {
-        if Self::has_excel_value(unit) {
-            log::info!("  [DEBUG] {}，忽略Excel薪资单位: {}", reason, unit.trim());
-        }
     }
 }

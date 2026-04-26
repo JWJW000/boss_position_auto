@@ -9,180 +9,167 @@ impl<'a> Poster<'a> {
         }
 
         log::info!("  [DEBUG] 职位标签拆分: {:?}", tags);
+
         self.open_custom_tag_dialog()?;
-        let options = self
-            .page
-            .eles(".question-option")
-            .map_err(BossError::map_element("未找到标签选项组"))?;
-        for option in options {
-            let li_eles = option
-                .elements("li")
-                .map_err(BossError::map_element("未找到标签选项"))?;
 
-            let mut selected_count = 0;
+        let question_items = self
+    .page
+    .eles(".question-item")
+    .map_err(BossError::map_element("未找到标签题目组"))?;
 
-            for (index, li_ele) in li_eles.iter().enumerate() {
-                let li_content = li_ele
-                    .text_content()
-                    .map_err(BossError::map_element("读取标签文本失败"))?;
+for question in question_items {
+    // 必须放在点击 li 之前，避免点击后 Vue 重渲染导致 question 节点失效
+    let is_required = question
+        .element(".question-title .required")
+        .map(|x| x.is_some())
+        .unwrap_or(false);
 
-                if tags.contains(&li_content) {
-                    li_ele
-                        .click()
-                        .map_err(BossError::map_element("点击标签失败"))?;
-                    tags.retain(|x| x != &li_content);
-                    selected_count += 1;
-                }
+    let li_eles = question
+        .elements(".question-option li")
+        .map_err(BossError::map_element("未找到标签选项"))?;
 
-                // 如果循环到了最后一个元素，且这一组一个都没点过
-                if index == li_eles.len() - 1 && selected_count == 0 {
-                    let starred_li = li_eles.iter().find(|li| {
-                        li.text_content()
-                            .map(|text| {
-                                let clean = text.replace(char::is_whitespace, "");
-                                clean.contains('*') || clean.contains('＊')
-                            })
-                            .unwrap_or(false)
-                    });
-                    if let Some(first_li) = starred_li {
-                        log::info!(
-                            "[Info] 标签组未匹配到关键词，默认选择带*标签: {:?}",
-                            first_li.text_content().ok()
-                        );
-                        first_li.click().ok();
-                    } else {
-                        log::info!("[Info] 标签组未匹配到关键词，且无*标签，跳过默认选择");
-                    }
-                }
-            }
-            sleep_random_ms(100, 200);
+    if li_eles.is_empty() {
+        continue;
+    }
+
+    let mut selected_count = 0;
+
+    for li_ele in li_eles.iter() {
+        let li_content = li_ele
+            .text_content()
+            .map_err(BossError::map_element("读取标签文本失败"))?
+            .trim()
+            .to_string();
+
+        if tags.contains(&li_content) {
+            li_ele
+                .click()
+                .map_err(BossError::map_element("点击标签失败"))?;
+
+            tags.retain(|x| x != &li_content);
+            selected_count += 1;
+
+            log::info!("[Info] 已选择匹配标签: {}", li_content);
+            sleep_random_ms(80, 150);
         }
+    }
 
-        log::info!("[Debug] 需要自定义新增的关键字:{:?}", tags);
-        
-       for tag in tags {
-    // 每轮重新找 input，避免元素失效
-    let input_ele = self
-        .page
-        .ele(".job-skill-add-container input.ipt")
-        .map_err(BossError::map_element("未找到输入框"))?
-        .ok_or_else(|| BossError::element("输入框不存在"))?;
+    if selected_count == 0 {
+        if is_required {
+            let first_li = li_eles
+                .first()
+                .ok_or_else(|| BossError::element("必填标签组没有可选项"))?;
 
-    input_ele
-        .click()
-        .map_err(BossError::map_element("点击输入框失败"))?;
+            let first_text = first_li
+                .text_content()
+                .unwrap_or_else(|_| "<读取失败>".to_string());
 
-    sleep_random_ms(300, 500);
+            log::info!(
+                "[Info] 必填标签组未匹配到关键词，默认选择第一个: {}",
+                first_text
+            );
 
-    let input_script = format!(
-        r#"
-        (function() {{
-            const input = document.querySelector(".job-skill-add-container input.ipt");
-            if (!input) return {{ ok: false, msg: "input not found" }};
+            first_li
+                .click()
+                .map_err(BossError::map_element("点击必填标签组默认选项失败"))?;
+        } else {
+            log::info!("[Info] 非必填标签组未匹配到关键词，跳过默认选择");
+        }
+    }
 
-            input.focus();
+    sleep_random_ms(100, 200);
+}
+        log::info!("[Debug] 需要自定义新增的关键字: {:?}", tags);
 
-            const value = {tag:?};
+        for tag in tags {
+            let add_skill_btn = self
+                .page
+                .ele(".add-skill")
+                .map_err(BossError::map_element("未找到自定义招聘偏好入口"))?
+                .ok_or_else(|| BossError::element("自定义招聘偏好入口不存在"))?;
 
-            const setter = Object.getOwnPropertyDescriptor(
-                window.HTMLInputElement.prototype,
-                "value"
-            ).set;
+            add_skill_btn
+                .click()
+                .map_err(BossError::map_element("点击自定义招聘偏好入口失败"))?;
 
-            setter.call(input, value);
+            sleep_random_ms(300, 500);
 
-            input.dispatchEvent(new Event("input", {{ bubbles: true }}));
-            input.dispatchEvent(new Event("change", {{ bubbles: true }}));
+            let input_script = format!(
+                r#"
+                (function() {{
+                    const input = document.querySelector(".job-skill-add-container input.ipt");
+                    if (!input) return {{ ok: false, msg: "input not found" }};
 
-            return {{
-                ok: true,
-                value: input.value,
-                className: input.className
-            }};
-        }})();
-        "#,
-        tag = tag
-    );
+                    input.focus();
 
-    let ret = self.page
-        .run_js(&input_script)
-        .map_err(BossError::map_element("写入输入框失败"))?;
+                    const value = {tag:?};
 
-    println!("写入结果: {:?}", ret);
+                    const setter = Object.getOwnPropertyDescriptor(
+                        window.HTMLInputElement.prototype,
+                        "value"
+                    ).set;
 
-    sleep_random_ms(500, 800);
+                    setter.call(input, value);
 
-    // 再次校验 value，确认真的写进去了
-    let check_ret = self.page
-        .run_js(r#"
-(function() {
-    const input = document.querySelector(".job-skill-add-container input.ipt");
-    if (!input) return { ok: false, msg: "input not found" };
-    return { ok: true, value: input.value, className: input.className };
-})();
-"#)
-        .map_err(BossError::map_element("校验输入框失败"))?;
+                    input.dispatchEvent(new Event("input", {{ bubbles: true }}));
+                    input.dispatchEvent(new Event("change", {{ bubbles: true }}));
 
-    println!("校验结果: {:?}", check_ret);
+                    return {{
+                        ok: true,
+                        value: input.value,
+                        className: input.className
+                    }};
+                }})();
+                "#,
+                tag = tag
+            );
 
-    // 只有确认 value 非空再点确认
-    let sure_btn = self
-        .page
-        .ele(".job-skill-add-footer .btn-sure-v2")
+            let ret = self
+                .page
+                .run_js(&input_script)
+                .map_err(BossError::map_element("写入自定义关键词失败"))?;
+
+            log::info!("[Debug] 自定义关键词写入结果: {:?}", ret);
+
+            sleep_random_ms(500, 800);
+
+            let dialog = self
+                .page
+                .ele(".job-skill-add-dialog")
+                .map_err(BossError::map_element("未找到关键词弹窗"))?
+                .ok_or_else(|| BossError::element("关键词弹窗不存在"))?;
+
+            let sure_btn = dialog
+                .element(".btn-sure-v2")
+                .map_err(BossError::map_element("未找到确认按钮"))?
+                .ok_or_else(|| BossError::element("确认按钮不存在"))?;
+
+            sure_btn
+                .click()
+                .map_err(BossError::map_element("点击确认按钮失败"))?;
+
+            log::info!("[Info] 已新增自定义关键词: {}", tag);
+
+            sleep_random_ms(500, 800);
+        }
+        let final_btn = self.page.ele(".btn-v2.btn-sure-v2")
         .map_err(BossError::map_element("未找到确认按钮"))?
         .ok_or_else(|| BossError::element("确认按钮不存在"))?;
-
-    sure_btn
-        .click()
-        .map_err(BossError::map_element("点击确认失败"))?;
-
-    sleep_random_ms(500, 800);
-}
-        log::info!("[Action] 执行最终确定点击");
-
-        let final_confirm_script = r#"
-                (function() {
-                    // 1. 尝试通过具体的容器路径定位，避免点错
-                    var btn = document.querySelector(".job-skill-add-footer .btn-sure-v2") 
-                        || document.querySelector(".boss-popup__content .btn-sure-v2");
-
-                    // 2. 如果常规选择器失效，通过文本和可见性兜底
-                    if (!btn) {
-                        var allBtns = document.querySelectorAll('.btn-sure-v2, .btn-sure');
-                        btn = Array.from(allBtns).find(el => 
-                            el.innerText.includes('确定') && el.offsetParent !== null
-                        );
-                    }
-
-                    if (btn) {
-                        btn.click();
-                        return "SUCCESS";
-                    }
-                    return "NOT_FOUND";
-                })();
-            "#;
-
-        let result = self
-            .page
-            .run_js(final_confirm_script)
-            .map_err(BossError::map_element("执行确定脚本失败"))?;
-
-        if result.as_str() == Some("NOT_FOUND") {
-            log::warn!("[Warning] 未找到最终确定按钮，请检查页面状态");
-        } else {
-            log::info!("[Success] 最终确认按钮已点击");
-        }
+        
+        final_btn.click().map_err(BossError::map_element("点击最终确认按钮失败"))?;
 
         Ok(())
     }
 
     /// Split the Excel keyword cell into clean single tags.
     fn split_tag_items(raw: &str) -> Vec<String> {
-        raw.split(|c: char| c == ',' || c == '，' || c == ';' || c == '；' || c.is_whitespace())
-            .map(str::trim)
-            .filter(|s| !s.is_empty() && *s != "无")
-            .map(ToOwned::to_owned)
-            .collect()
+        raw.split(|c: char| {
+            c == ',' || c == '，' || c == ';' || c == '；' || c.is_whitespace()
+        })
+        .map(str::trim)
+        .filter(|s| !s.is_empty() && *s != "无")
+        .map(ToOwned::to_owned)
+        .collect()
     }
 
     /// Open the second-level custom keyword dialog from the preference area.
@@ -191,9 +178,11 @@ impl<'a> Poster<'a> {
             .page
             .ele(".add-skill")
             .map_err(BossError::map_cdp("查找关键词入口失败"))?;
+
         if custom_tag_dialog_ele.is_none() {
             return Ok(false);
         }
+
         custom_tag_dialog_ele
             .unwrap()
             .click()
@@ -201,6 +190,6 @@ impl<'a> Poster<'a> {
 
         sleep_random_ms(200, 500);
 
-        Ok(false)
+        Ok(true)
     }
 }

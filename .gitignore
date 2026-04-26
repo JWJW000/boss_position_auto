@@ -1,2 +1,28 @@
+# Rust
 /target
-./claude
+Cargo.lock
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Local data
+cookies.json
+selectors.json
+
+# Excel temp files
+~$*.xlsx
+~$*.xls
+
+# Claude
+.claude/

@@ -20,6 +20,7 @@ pub struct SelectorMap {
     pub deadline: Vec<String>,
     pub district: Vec<String>,
     pub job_type: Vec<String>,
+    pub overseas: Vec<String>,
 }
 
 impl SelectorMap {
@@ -92,6 +93,11 @@ impl SelectorMap {
                 "css:.recruitment-type-content".to_string(),
                 "css:.job-type-item".to_string(),
                 "xpath://p[contains(@class,'job-type-item')]".to_string(),
+            ],
+            overseas: vec![
+                "css:.overseas-entry-container".to_string(),
+                "xpath://div[contains(@class,'overseas-entry-container')]".to_string(),
+                "xpath://div[contains(@class,'publish-edit-form-row')][.//*[contains(text(),'是否驻外')]]".to_string(),
             ],
         }
     }

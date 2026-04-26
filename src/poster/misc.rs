@@ -1,23 +1,6 @@
 use super::*;
 
 impl<'a> Poster<'a> {
-    /// Fill the benefits text field when the Excel row provides it.
-    pub(super) fn fill_benefits(&mut self, job: &JobRecord) -> BResult<()> {
-        let benefits = job.福利.trim();
-        if !Self::has_excel_value(benefits) {
-            return Ok(());
-        }
-
-        let el = SelectorMap::find_first(self.page, &self.selectors.benefits);
-        if let Some(el) = el {
-            el.input(benefits)
-                .map_err(BossError::map_post("填写福利失败"))?;
-            log::info!("  [√] 公司福利已填写");
-        }
-
-        Ok(())
-    }
-
     /// Fill the publish deadline when the Excel row provides a non-empty date.
     pub(super) fn fill_deadline(&mut self, job: &JobRecord) -> BResult<()> {
         let deadline = job.截止日期.trim();
@@ -173,15 +156,38 @@ impl<'a> Poster<'a> {
 
         let deadline = std::time::Instant::now() + std::time::Duration::from_secs(18);
         let mut url = String::new();
+        let mut last_url = String::new();
+
         while std::time::Instant::now() < deadline {
             url = self.page.url()
                 .map_err(BossError::map_cdp("读取发布结果URL失败"))?;
+
+            // 先检查是否有表单错误
+            let form_errors = self.collect_form_errors();
+            if !form_errors.is_empty() {
+                log::warn!("  [检测到表单错误] {}", form_errors.join("；"));
+                return Err(BossError::PostFailed(format!(
+                    "发布未成功，表单校验提示: {}",
+                    form_errors.join("；")
+                )));
+            }
+
+            // 检查 URL 是否变化（说明页面跳转了）
+            if url != last_url && !url.is_empty() {
+                log::info!("  [URL变化] {}", url);
+                last_url = url.clone();
+            }
+
+            // 检查是否成功
             if Self::is_publish_success_url(&url) || self.has_publish_success_tip() {
+                log::info!("  [发布成功] 最终URL: {}", url);
                 return Ok(url);
             }
+
             sleep_random_ms(550, 850);
         }
 
+        // 超时后再次检查表单错误
         let form_errors = self.collect_form_errors();
         if !form_errors.is_empty() {
             return Err(BossError::PostFailed(format!(

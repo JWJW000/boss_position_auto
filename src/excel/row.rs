@@ -10,6 +10,7 @@ pub(crate) fn parse_row(row: &[Data], cols: &ColIdx) -> JobRecord {
         职位名称: cell(row, cols.职位名称),
         职位描述: cell(row, cols.职位描述),
         是否急招: cell_opt(row, cols.是否急招),
+        是否驻外: cell_opt(row, cols.是否驻外),
         职位类型: cell(row, cols.职位类型),
         经验: cell_opt(row, cols.经验),
         城市: cell(row, cols.城市),
@@ -20,10 +21,9 @@ pub(crate) fn parse_row(row: &[Data], cols: &ColIdx) -> JobRecord {
         薪资单位: cell_opt(row, cols.薪资单位),
         结算方式: cell_opt(row, cols.结算方式),
         关键词: cell(row, cols.关键词),
-        福利: cell_opt(row, cols.福利),
         届别: cell_opt(row, cols.届别),
-        实习时长: cell_opt(row, cols.实习时长),
-        其他说明: cell_opt(row, cols.其他说明),
+        最少实习月数: cell_opt(row, cols.最少实习月数),
+        最少周到岗天数: cell_opt(row, cols.最少周到岗天数),
         截止日期: cell_opt(row, cols.截止日期),
     }
 }

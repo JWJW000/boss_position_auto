@@ -6,12 +6,12 @@
 //!   boss_auto --dry-run              # 只读Excel不发布
 //!   boss_auto --relogin              # 强制重新扫码
 
-use boss_auto::{BossClient, ExcelReader, JobRecord, Poster};
+use boss_auto::{BossClient, ExcelReader, JobRecord, Poster, FailedJob, export_failed_jobs};
 use log::{error, info, LevelFilter};
 use simplelog::{ColorChoice, CombinedLogger, ConfigBuilder, SharedLogger, TermLogger, TerminalMode, WriteLogger};
 use std::fs;
 use std::io::{self, Write};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 use structopt::StructOpt;
 
@@ -160,7 +160,10 @@ fn run() -> ExitCode {
     let mut poster = Poster::new(&mut client);
     let mut success = 0;
     let mut failed = 0;
+    let mut failed_jobs: Vec<FailedJob> = Vec::new();
+
     for (index, job) in jobs.iter().enumerate() {
+        let row_number = args.start_row + index;
         match poster.post(job) {
             Ok(url) => {
                 success += 1;
@@ -168,13 +171,39 @@ fn run() -> ExitCode {
             }
             Err(e) => {
                 failed += 1;
-                error!("[失败] 第{}条 {}: {}", args.start_row + index, job.职位名称, e);
+                let error_msg = format!("{}", e);
+                error!("[失败] 第{}条 {}: {}", row_number, job.职位名称, error_msg);
+
+                // 记录失败的岗位
+                failed_jobs.push(FailedJob {
+                    row_number,
+                    job: job.clone(),
+                    error_message: error_msg,
+                });
             }
         }
     }
 
     info!("\n===== 发布完成 =====");
     info!("成功: {} | 失败: {}", success, failed);
+
+    // 如果有失败的岗位，导出到 Excel
+    if !failed_jobs.is_empty() {
+        let failed_excel_path = excel_path
+            .parent()
+            .unwrap_or_else(|| Path::new("."))
+            .join("失败岗位记录.xlsx");
+
+        match export_failed_jobs(&failed_jobs, &failed_excel_path) {
+            Ok(_) => {
+                info!("失败岗位已导出到: {:?}", failed_excel_path);
+            }
+            Err(e) => {
+                error!("导出失败岗位Excel失败: {}", e);
+            }
+        }
+    }
+
     if failed > 0 {
         ExitCode::from(1)
     } else {

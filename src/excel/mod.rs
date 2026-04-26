@@ -7,9 +7,11 @@ mod columns;
 mod reader;
 mod record;
 mod row;
+mod writer;
 
 #[cfg(test)]
 mod tests;
 
 pub use reader::ExcelReader;
 pub use record::JobRecord;
+pub use writer::{export_failed_jobs, FailedJob};

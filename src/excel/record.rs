@@ -7,8 +7,10 @@ pub struct JobRecord {
     pub 职位名称: String,
     /// 职位描述（富文本）
     pub 职位描述: String,
-    /// 是否急招/是否驻外
+    /// 是否急招
     pub 是否急招: String,
+    /// 是否驻外：长期驻境外 / 短期境外出差 / 境内岗位
+    pub 是否驻外: String,
     /// 职位类型：如 Java
     pub 职位类型: String,
     /// 经验要求：如 在校/应届、1-3年
@@ -29,14 +31,12 @@ pub struct JobRecord {
     pub 结算方式: String,
     /// 职位关键词，通常用空格或逗号分隔
     pub 关键词: String,
-    /// 公司福利
-    pub 福利: String,
     /// 届别/毕业时间
     pub 届别: String,
-    /// 实习月数
-    pub 实习时长: String,
-    /// 周到岗天数或其他说明
-    pub 其他说明: String,
+    /// 最少实习月数
+    pub 最少实习月数: String,
+    /// 最少周到岗天数
+    pub 最少周到岗天数: String,
     /// 招聘截止日期
     pub 截止日期: String,
 }
