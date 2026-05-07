@@ -24,7 +24,7 @@ impl<'a> Poster<'a> {
 
         // ==================== 第四步：职位关键词 ====================
         log::info!("  [步骤4] 填写职位关键词");
-        self.fill_tags(job)?;
+        self.fill_intern_tags(job)?;
 
         // ==================== 第五步：工作地址 ====================
         log::info!("  [步骤5] 填写工作地址");
@@ -50,84 +50,96 @@ impl<'a> Poster<'a> {
             return Ok(());
         }
 
-        // 1. 查找"经验"所在的表单行
-        let requirements_form_rows = self
-            .page
-            .eles(".requirements-info-content .publish-edit-form-row")
-            .map_err(BossError::map_element("未找到表单行"))?;
+        let target_value = job.经验.trim();
 
-        for form_row in requirements_form_rows {
-            // 2. 读取表单行的标题（如"经验"）
-            let label_el = form_row
-                .element(".publish-title")
-                .map_err(BossError::map_element("未找到标题元素"))?;
+        // 兼容两种页面结构：publish-edit-form-row / form-row + publish-title / title
+        let row_selectors = [
+            ".requirements-info-content .publish-edit-form-row",
+            ".publish-edit-form-row",
+            ".form-row.job-experience-row",
+            ".form-row",
+        ];
 
-            let label_el = label_el.ok_or_else(|| BossError::element("标题元素为空"))?;
+        let mut clicked = false;
 
-            let label_text = label_el
-                .text_content()
-                .map_err(BossError::map_element("无法读取标题文本"))?
-                .trim()
-                .to_string();
+        for row_selector in row_selectors {
+            let form_rows = match self.page.eles(row_selector) {
+                Ok(rows) => rows,
+                Err(_) => continue,
+            };
 
-            // 3. 判断是否是"经验"字段
-            if label_text != "经验" {
-                continue;
-            }
+            for form_row in form_rows {
+                let label_el = match form_row.element(".publish-title") {
+                    Ok(Some(el)) => el,
+                    _ => match form_row.element(".title") {
+                        Ok(Some(el)) => el,
+                        _ => continue,
+                    },
+                };
 
-            log::info!("  [找到] 经验字段");
-
-            // 4. 点击下拉框
-            let select_inner = form_row
-                .element(".ui-select-inner")
-                .map_err(BossError::map_element("未找到下拉框"))?;
-
-            let select_inner = select_inner.ok_or_else(|| BossError::element("下拉框为空"))?;
-
-            select_inner
-                .click()
-                .map_err(BossError::map_element("点击下拉框失败"))?;
-
-            sleep_random_ms(300, 500);
-
-            // 5. 查找所有下拉选项
-            let select_items = self
-                .page
-                .eles(".ui-select-item")
-                .map_err(BossError::map_element("未找到下拉选项"))?;
-
-            // 6. 遍历选项，找到匹配的并点击
-            let target_value = job.经验.trim();
-            let mut selected = false;
-
-            for item in select_items {
-                let item_text = item
+                let label_text = label_el
                     .text_content()
-                    .map_err(BossError::map_element("无法读取选项文本"))?
+                    .map_err(BossError::map_element("无法读取标题文本"))?
                     .trim()
                     .to_string();
 
-                if item_text == target_value {
-                    item.click()
-                        .map_err(BossError::map_element("点击选项失败"))?;
-                    selected = true;
-                    log::info!("  [√] 经验: {}", target_value);
-                    break;
+                if label_text != "经验" {
+                    continue;
                 }
+
+                log::info!("  [找到] 经验字段");
+
+                let select_inner = form_row
+                    .element(".ui-select-inner")
+                    .map_err(BossError::map_element("未找到经验下拉框"))?;
+
+                let select_inner = select_inner
+                    .ok_or_else(|| BossError::element("经验下拉框为空"))?;
+
+                select_inner
+                    .click()
+                    .map_err(BossError::map_element("点击经验下拉框失败"))?;
+
+                clicked = true;
+                break;
             }
 
-            if !selected {
-                return Err(BossError::element(format!("未找到经验选项: {}", target_value)));
+            if clicked {
+                break;
             }
-
-            sleep_random_ms(400, 500);
-            return Ok(());
         }
 
-        Err(BossError::element("未找到经验字段"))
+        if !clicked {
+            return Err(BossError::element("未找到经验字段"));
+        }
+
+        sleep_random_ms(300, 500);
+
+        let select_items = self
+            .page
+            .eles(".ui-select-item")
+            .map_err(BossError::map_element("未找到经验下拉选项"))?;
+
+        for item in select_items {
+            let item_text = item
+                .text_content()
+                .map_err(BossError::map_element("无法读取经验选项文本"))?
+                .trim()
+                .to_string();
+
+            if item_text == target_value {
+                item.click()
+                    .map_err(BossError::map_element("点击经验选项失败"))?;
+
+                log::info!("  [√] 经验: {}", target_value);
+                sleep_random_ms(400, 500);
+                return Ok(());
+            }
+        }
+
+        Err(BossError::element(format!("未找到经验选项: {}", target_value)))
     }
 
-    /// 实习生招聘 - 填写学历要求
     fn fill_intern_education(&mut self, job: &JobRecord) -> BResult<()> {
         // 检查 Excel 中是否有学历值
         if !Self::has_excel_value(&job.学历) {
@@ -135,128 +147,256 @@ impl<'a> Poster<'a> {
             return Ok(());
         }
 
-        // 1. 查找"学历"所在的表单行
-        let requirements_form_rows = self
-            .page
-            .eles(".requirements-info-content .publish-edit-form-row")
-            .map_err(BossError::map_element("未找到表单行"))?;
+        let target_value = job.学历.trim();
 
-        for form_row in requirements_form_rows {
-            // 2. 读取表单行的标题（如"学历"）
-            let label_el = form_row
-                .element(".publish-title")
-                .map_err(BossError::map_element("未找到标题元素"))?;
+        // 兼容两种页面结构：publish-edit-form-row / form-row + publish-title / title
+        let row_selectors = [
+            ".requirements-info-content .publish-edit-form-row",
+            ".publish-edit-form-row",
+            ".form-row.job-experience-row",
+            ".form-row",
+        ];
 
-            let label_el = label_el.ok_or_else(|| BossError::element("标题元素为空"))?;
+        let mut clicked = false;
 
-            let label_text = label_el
-                .text_content()
-                .map_err(BossError::map_element("无法读取标题文本"))?
-                .trim()
-                .to_string();
+        for row_selector in row_selectors {
+            let form_rows = match self.page.eles(row_selector) {
+                Ok(rows) => rows,
+                Err(_) => continue,
+            };
 
-            // 3. 判断是否是"学历"字段
-            if label_text != "学历" {
-                continue;
-            }
+            for form_row in form_rows {
+                let label_el = match form_row.element(".publish-title") {
+                    Ok(Some(el)) => el,
+                    _ => match form_row.element(".title") {
+                        Ok(Some(el)) => el,
+                        _ => continue,
+                    },
+                };
 
-            log::info!("  [找到] 学历字段");
-
-            // 4. 点击下拉框
-            let select_inner = form_row
-                .element(".ui-select-inner")
-                .map_err(BossError::map_element("未找到下拉框"))?;
-
-            let select_inner = select_inner.ok_or_else(|| BossError::element("下拉框为空"))?;
-
-            select_inner
-                .click()
-                .map_err(BossError::map_element("点击下拉框失败"))?;
-
-            sleep_random_ms(300, 500);
-
-            // 5. 查找所有下拉选项
-            let select_items = self
-                .page
-                .eles(".ui-select-item")
-                .map_err(BossError::map_element("未找到下拉选项"))?;
-
-            // 6. 遍历选项，找到匹配的并点击
-            let target_value = job.学历.trim();
-            let mut selected = false;
-
-            for item in select_items {
-                let item_text = item
+                let label_text = label_el
                     .text_content()
-                    .map_err(BossError::map_element("无法读取选项文本"))?
+                    .map_err(BossError::map_element("无法读取标题文本"))?
                     .trim()
                     .to_string();
 
-                if item_text == target_value {
-                    item.click()
-                        .map_err(BossError::map_element("点击选项失败"))?;
-                    selected = true;
-                    log::info!("  [√] 学历: {}", target_value);
-                    break;
+                if label_text != "学历" {
+                    continue;
                 }
+
+                log::info!("  [找到] 学历字段");
+
+                let select_inner = form_row
+                    .element(".ui-select-inner")
+                    .map_err(BossError::map_element("未找到学历下拉框"))?;
+
+                let select_inner = select_inner
+                    .ok_or_else(|| BossError::element("学历下拉框为空"))?;
+
+                select_inner
+                    .click()
+                    .map_err(BossError::map_element("点击学历下拉框失败"))?;
+
+                clicked = true;
+                break;
             }
 
-            if !selected {
-                return Err(BossError::element(format!("未找到学历选项: {}", target_value)));
+            if clicked {
+                break;
             }
+        }
 
-            sleep_random_ms(400, 500);
+        if !clicked {
+            return Err(BossError::element("未找到学历字段"));
+        }
+
+        sleep_random_ms(300, 500);
+
+        let select_items = self
+            .page
+            .eles(".ui-select-item")
+            .map_err(BossError::map_element("未找到学历下拉选项"))?;
+
+        for item in select_items {
+            let item_text = item
+                .text_content()
+                .map_err(BossError::map_element("无法读取学历选项文本"))?
+                .trim()
+                .to_string();
+
+            if item_text == target_value {
+                item.click()
+                    .map_err(BossError::map_element("点击学历选项失败"))?;
+
+                log::info!("  [√] 学历: {}", target_value);
+                sleep_random_ms(400, 500);
+                return Ok(());
+            }
+        }
+
+        Err(BossError::element(format!("未找到学历选项: {}", target_value)))
+    }
+
+    fn fill_intern_salary(&mut self, job: &JobRecord, _kind: RecruitmentKind) -> BResult<()> {
+        let low = job.薪资低.trim();
+        let high = job.薪资高.trim();
+
+        if !Self::has_excel_value(&job.薪资低) && !Self::has_excel_value(&job.薪资高) {
+            log::warn!("  [跳过] 薪资字段为空");
             return Ok(());
         }
 
-        Err(BossError::element("未找到学历字段"))
-    }
+        log::info!("  [开始] 填写实习薪资范围");
 
-    /// 实习生招聘 - 填写薪资范围（日薪）
-    fn fill_intern_salary(&mut self, job: &JobRecord, _kind: RecruitmentKind) -> BResult<()> {
-        // 检查 Excel 中是否有薪资值
-         let low = &job.薪资低;
-         let high = &job.薪资高;
+        // 先尝试在“薪资范围/薪资”表单行中找下拉；不足 2 个时再回退到全页面下拉。
+        let row_selectors = [
+            ".requirements-info-content .publish-edit-form-row",
+            ".publish-edit-form-row",
+            ".form-row.job-experience-row",
+            ".form-row",
+        ];
 
-        if Self::has_excel_value(&low) {
-            let start = self.page
-                .ele(".margin-r-15 .ui-select-selection")
-                .map_err(BossError::map_element("未找到起始薪资下拉框按钮"))?
-                .ok_or_else(|| BossError::element("下拉框不存在"))?;
-            start.click()
-                .map_err(BossError::map_element("点击起始薪资下拉框失败"))?;
+        let mut salary_row_found = false;
+        let mut salary_selects = Vec::new();
 
-            let items = self.page.eles(".ui-select-item")?;
-            for item in items {
-                let text = item.text()?;
-                if text.trim() == low {
-                    item.click()?;
-                    break;
+        for row_selector in row_selectors {
+            let form_rows = match self.page.eles(row_selector) {
+                Ok(rows) => rows,
+                Err(_) => continue,
+            };
+
+            for form_row in form_rows {
+                let label_el = match form_row.element(".publish-title") {
+                    Ok(Some(el)) => el,
+                    _ => match form_row.element(".title") {
+                        Ok(Some(el)) => el,
+                        _ => continue,
+                    },
+                };
+
+                let label_text = label_el
+                    .text_content()
+                    .map_err(BossError::map_element("无法读取标题文本"))?
+                    .trim()
+                    .to_string();
+
+                if label_text != "薪资范围" && label_text != "薪资" {
+                    continue;
                 }
+
+                log::info!("  [找到] 薪资范围字段");
+                salary_row_found = true;
+
+                if let Ok(selects) = form_row.elements(".ui-select-selection") {
+                    salary_selects = selects;
+                }
+
+                break;
+            }
+
+            if salary_row_found {
+                break;
             }
         }
 
-        if Self::has_excel_value(&high) {
-            let end = self.page
-                .ele(".salary-select .ui-select-selection")
-                .map_err(BossError::map_element("未找到截止薪资下拉框按钮"))?
-                .ok_or_else(|| BossError::element("下拉框不存在"))?;
-            end.click()
-                .map_err(BossError::map_element("点击截止薪资下拉框失败"))?;
+        if !salary_row_found {
+            log::warn!("  [警告] 未通过标题找到薪资范围字段，尝试全局薪资下拉");
+        }
 
-            let items = self.page.eles(".ui-select-item")?;
-            for item in items {
-                let text = item.text()?;
-                if text.trim() == high {
-                    item.click()?;
+        if salary_selects.len() < 2 {
+            salary_selects = self
+                .page
+                .eles(".ui-select-selection")
+                .map_err(BossError::map_element("未找到页面下拉框"))?;
+        }
+
+        if salary_selects.is_empty() {
+            return Err(BossError::element("未找到薪资下拉框"));
+        }
+
+        let mut low_index: Option<usize> = None;
+
+        if Self::has_excel_value(&job.薪资低) {
+            for (idx, select) in salary_selects.iter().enumerate() {
+                if select.click().is_err() {
+                    continue;
+                }
+                sleep_random_ms(300, 500);
+
+                let items = match self.page.eles(".ui-select-item") {
+                    Ok(items) => items,
+                    Err(_) => continue,
+                };
+
+                let mut selected = false;
+                for item in items.iter().rev() {
+                    let text = item
+                        .text_content()
+                        .map_err(BossError::map_element("无法读取起始薪资选项文本"))?;
+
+                    if text.trim() == low {
+                        item.click()
+                            .map_err(BossError::map_element("点击起始薪资选项失败"))?;
+                        selected = true;
+                        low_index = Some(idx);
+                        log::info!("  [√] 起始薪资: {}", low);
+                        break;
+                    }
+                }
+
+                if selected {
                     break;
                 }
             }
+
+            if low_index.is_none() {
+                return Err(BossError::element(format!("未找到起始薪资选项: {}", low)));
+            }
         }
+
+        if Self::has_excel_value(&job.薪资高) {
+            let start_idx = low_index.map(|idx| idx + 1).unwrap_or(0);
+            let mut selected_high = false;
+
+            for select in salary_selects.iter().skip(start_idx) {
+                if select.click().is_err() {
+                    continue;
+                }
+                sleep_random_ms(300, 500);
+
+                let items = match self.page.eles(".ui-select-item") {
+                    Ok(items) => items,
+                    Err(_) => continue,
+                };
+
+                for item in items.iter().rev() {
+                    let text = item
+                        .text_content()
+                        .map_err(BossError::map_element("无法读取截止薪资选项文本"))?;
+
+                    if text.trim() == high {
+                        item.click()
+                            .map_err(BossError::map_element("点击截止薪资选项失败"))?;
+                        selected_high = true;
+                        log::info!("  [√] 截止薪资: {}", high);
+                        break;
+                    }
+                }
+
+                if selected_high {
+                    break;
+                }
+            }
+
+            if !selected_high {
+                return Err(BossError::element(format!("未找到截止薪资选项: {}", high)));
+            }
+        }
+
+        sleep_random_ms(400, 500);
         Ok(())
     }
 
-    /// 实习生招聘 - 填写职位关键词
     fn fill_intern_tags(&mut self, job: &JobRecord) -> BResult<()> {
         // 检查 Excel 中是否有关键词
         if !Self::has_excel_value(&job.关键词) {
@@ -266,10 +406,9 @@ impl<'a> Poster<'a> {
 
         log::info!("  [开始] 填写职位关键词");
 
-        // 1. 将关键词按空格或逗号分割
         let keywords: Vec<&str> = job.关键词
-            .split(|c: char| c.is_whitespace() || c == ',' || c == '，')
-            .filter(|s| !s.trim().is_empty())
+            .split(|c: char| c.is_whitespace() || c == ',' || c == '，' || c == ';' || c == '；')
+            .filter(|s| !s.trim().is_empty() && s.trim() != "无")
             .collect();
 
         if keywords.is_empty() {
@@ -277,48 +416,59 @@ impl<'a> Poster<'a> {
             return Ok(());
         }
 
-        // 2. 查找关键词输入框
-        let tag_input = SelectorMap::find_first(self.page, &self.selectors.tags);
-        if tag_input.is_none() {
-            log::warn!("  [跳过] 未找到职位关键词输入框");
-            return Ok(());
-        }
+        // 方式一：新版 / form-row 页面，直接找输入框。
+        let direct_selectors = [
+            ".job-keyword input",
+            ".job-keywords input",
+            ".job-tags input",
+            ".tag-input input",
+            ".tags-input input",
+            ".keyword-input input",
+            ".publish-content input[placeholder*='关键词']",
+            ".publish-content input[placeholder*='标签']",
+            ".content input[placeholder*='关键词']",
+            ".content input[placeholder*='标签']",
+            "input[placeholder*='关键词']",
+            "input[placeholder*='职位关键词']",
+            "input[placeholder*='标签']",
+        ];
 
-        let tag_input = tag_input.unwrap();
+        for selector in direct_selectors {
+            if let Ok(Some(tag_input)) = self.page.ele(selector) {
+                for (i, keyword) in keywords.iter().enumerate() {
+                    let keyword = keyword.trim();
+                    if keyword.is_empty() {
+                        continue;
+                    }
 
-        // 3. 逐个输入关键词
-        for (i, keyword) in keywords.iter().enumerate() {
-            let keyword = keyword.trim();
-            if keyword.is_empty() {
-                continue;
+                    log::info!("  [输入] 关键词 {}: {}", i + 1, keyword);
+
+                    tag_input
+                        .click()
+                        .map_err(BossError::map_post("点击关键词输入框失败"))?;
+                    sleep_random_ms(200, 300);
+
+                    tag_input
+                        .input(keyword)
+                        .map_err(BossError::map_post("输入关键词失败"))?;
+                    sleep_random_ms(300, 500);
+
+                    tag_input
+                        .input("\n")
+                        .map_err(BossError::map_post("确认关键词失败"))?;
+                    sleep_random_ms(400, 600);
+                }
+
+                log::info!("  [√] 职位关键词: 已通过直接输入方式填写 {} 个", keywords.len());
+                return Ok(());
             }
-
-            log::info!("  [输入] 关键词 {}: {}", i + 1, keyword);
-
-            // 4. 点击输入框
-            tag_input
-                .click()
-                .map_err(BossError::map_post("点击关键词输入框失败"))?;
-            sleep_random_ms(200, 300);
-
-            // 5. 输入关键词
-            tag_input
-                .input(keyword)
-                .map_err(BossError::map_post("输入关键词失败"))?;
-            sleep_random_ms(300, 500);
-
-            // 6. 按回车确认
-            tag_input
-                .input("\n")
-                .map_err(BossError::map_post("确认关键词失败"))?;
-            sleep_random_ms(400, 600);
         }
 
-        log::info!("  [√] 职位关键词: 已输入 {} 个", keywords.len());
-        Ok(())
+        // 方式二：旧版页面，复用全局 fill_tags 弹窗逻辑。
+        log::info!("  [提示] 未找到直接关键词输入框，尝试旧版关键词弹窗逻辑");
+        self.fill_tags(job)
     }
 
-    /// 实习生招聘 - 填写工作地址
     fn fill_intern_city(&mut self, job: &JobRecord) -> BResult<()> {
         // 检查 Excel 中是否有城市值
         if !Self::has_excel_value(&job.城市) {
@@ -381,11 +531,30 @@ impl<'a> Poster<'a> {
 
         log::info!("filling intern months");
 
-        let rows = self.page.eles(".publish-edit-form-row")?;
+        let row_selectors = [
+            ".requirements-info-content .publish-edit-form-row",
+            ".publish-edit-form-row",
+            ".form-row.job-experience-row",
+            ".form-row",
+        ];
 
         let mut target_row = None;
-        for row in rows {
-            if let Ok(Some(title_el)) = row.element(".publish-title") {
+
+        for row_selector in row_selectors {
+            let rows = match self.page.eles(row_selector) {
+                Ok(rows) => rows,
+                Err(_) => continue,
+            };
+
+            for row in rows {
+                let title_el = match row.element(".publish-title") {
+                    Ok(Some(el)) => el,
+                    _ => match row.element(".title") {
+                        Ok(Some(el)) => el,
+                        _ => continue,
+                    },
+                };
+
                 if let Ok(text) = title_el.text() {
                     if text.contains("实习要求") {
                         target_row = Some(row);
@@ -393,18 +562,30 @@ impl<'a> Poster<'a> {
                     }
                 }
             }
+
+            if target_row.is_some() {
+                break;
+            }
         }
 
         let row = target_row.ok_or_else(|| BossError::element("intern requirement row not found"))?;
 
-        let month_select = row
-            .element(".margin-r-15 .ui-select-selection")?
-            .ok_or_else(|| BossError::element("month select not found"))?;
+        let selects = row
+            .elements(".ui-select-selection")
+            .map_err(BossError::map_element("intern requirement selects not found"))?;
 
-        month_select.click().map_err(BossError::map_element("click month select failed"))?;
+        let month_select = if let Some(select) = selects.get(0) {
+            select
+        } else {
+            return Err(BossError::element("month select not found"));
+        };
+
+        month_select
+            .click()
+            .map_err(BossError::map_element("click month select failed"))?;
         sleep_random_ms(300, 500);
 
-        let target_text = &job.最少实习月数;
+        let target_text = job.最少实习月数.trim();
         let items = self.page.eles(".ui-select-item")?;
         let mut selected = false;
 
@@ -434,11 +615,30 @@ impl<'a> Poster<'a> {
 
         log::info!("filling intern days");
 
-        let rows = self.page.eles(".publish-edit-form-row")?;
+        let row_selectors = [
+            ".requirements-info-content .publish-edit-form-row",
+            ".publish-edit-form-row",
+            ".form-row.job-experience-row",
+            ".form-row",
+        ];
 
         let mut target_row = None;
-        for row in rows {
-            if let Ok(Some(title_el)) = row.element(".publish-title") {
+
+        for row_selector in row_selectors {
+            let rows = match self.page.eles(row_selector) {
+                Ok(rows) => rows,
+                Err(_) => continue,
+            };
+
+            for row in rows {
+                let title_el = match row.element(".publish-title") {
+                    Ok(Some(el)) => el,
+                    _ => match row.element(".title") {
+                        Ok(Some(el)) => el,
+                        _ => continue,
+                    },
+                };
+
                 if let Ok(text) = title_el.text() {
                     if text.contains("实习要求") {
                         target_row = Some(row);
@@ -446,18 +646,33 @@ impl<'a> Poster<'a> {
                     }
                 }
             }
+
+            if target_row.is_some() {
+                break;
+            }
         }
 
         let row = target_row.ok_or_else(|| BossError::element("intern requirement row not found"))?;
 
-        let days_select = row
-            .element(".ui-select-single .ui-select-selection")?
-            .ok_or_else(|| BossError::element("days select not found"))?;
+        let selects = row
+            .elements(".ui-select-selection")
+            .map_err(BossError::map_element("intern requirement selects not found"))?;
 
-        days_select.click().map_err(BossError::map_element("click days select failed"))?;
+        // “实习要求”通常有两个下拉：第一个是实习月数，第二个是周到岗天数。
+        let days_select = if let Some(select) = selects.get(1) {
+            select
+        } else if let Some(select) = selects.get(0) {
+            select
+        } else {
+            return Err(BossError::element("days select not found"));
+        };
+
+        days_select
+            .click()
+            .map_err(BossError::map_element("click days select failed"))?;
         sleep_random_ms(300, 500);
 
-        let target_text = &job.最少周到岗天数;
+        let target_text = job.最少周到岗天数.trim();
         let items = self.page.eles(".ui-select-item")?;
         let mut selected = false;
 
@@ -478,4 +693,5 @@ impl<'a> Poster<'a> {
         sleep_random_ms(400, 500);
         Ok(())
     }
+
 }

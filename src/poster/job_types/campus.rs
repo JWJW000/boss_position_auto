@@ -24,12 +24,12 @@ impl<'a> Poster<'a> {
 
         // ==================== 第四步：职位关键词 ====================
         log::info!("  [步骤4] 填写职位关键词");
-        self.fill_tags(job)?;
+        self.fill_campus_tags(job)?;
 
         // ==================== 第五步：工作地址 ====================
         log::info!("  [步骤5] 填写工作地址");
         self.fill_city()?;
-
+        
         // ==================== 第六步：毕业时间 ====================
         log::info!("  [步骤6] 填写毕业时间");
         self.fill_campus_graduate_time(job)?;
@@ -44,320 +44,385 @@ impl<'a> Poster<'a> {
 
     /// 应届生校园招聘 - 填写经验要求
     fn fill_campus_experience(&mut self, job: &JobRecord) -> BResult<()> {
-        // 检查 Excel 中是否有经验值
         if !Self::has_excel_value(&job.经验) {
             log::warn!("  [跳过] 经验字段为空");
             return Ok(());
         }
 
-        // 1. 查找"经验"所在的表单行
-        let requirements_form_rows = self
-            .page
-            .eles(".requirements-info-content .publish-edit-form-row")
-            .map_err(BossError::map_element("未找到表单行"))?;
+        let target_value = job.经验.trim();
 
-        for form_row in requirements_form_rows {
-            // 2. 读取表单行的标题（如"经验"）
-            let label_el = form_row
-                .element(".publish-title")
-                .map_err(BossError::map_element("未找到标题元素"))?;
+        let row_selectors = [
+            ".requirements-info-content .publish-edit-form-row",
+            ".publish-edit-form-row",
+            ".form-row.job-experience-row",
+            ".form-row",
+        ];
 
-            let label_el = label_el.ok_or_else(|| BossError::element("标题元素为空"))?;
+        let mut clicked = false;
 
-            let label_text = label_el
-                .text_content()
-                .map_err(BossError::map_element("无法读取标题文本"))?
-                .trim()
-                .to_string();
+        for row_selector in row_selectors {
+            let form_rows = match self.page.eles(row_selector) {
+                Ok(rows) => rows,
+                Err(_) => continue,
+            };
 
-            // 3. 判断是否是"经验"字段
-            if label_text != "经验" {
-                continue;
-            }
+            for form_row in form_rows {
+                let label_el = match form_row.element(".publish-title") {
+                    Ok(Some(el)) => el,
+                    _ => match form_row.element(".title") {
+                        Ok(Some(el)) => el,
+                        _ => continue,
+                    },
+                };
 
-            log::info!("  [找到] 经验字段");
-
-            // 4. 点击下拉框
-            let select_inner = form_row
-                .element(".ui-select-inner")
-                .map_err(BossError::map_element("未找到下拉框"))?;
-
-            let select_inner = select_inner.ok_or_else(|| BossError::element("下拉框为空"))?;
-
-            select_inner
-                .click()
-                .map_err(BossError::map_element("点击下拉框失败"))?;
-
-            sleep_random_ms(300, 500);
-
-            // 5. 查找所有下拉选项
-            let select_items = self
-                .page
-                .eles(".ui-select-item")
-                .map_err(BossError::map_element("未找到下拉选项"))?;
-
-            // 6. 遍历选项，找到匹配的并点击
-            let target_value = job.经验.trim();
-            let mut selected = false;
-
-            for item in select_items {
-                let item_text = item
+                let label_text = label_el
                     .text_content()
-                    .map_err(BossError::map_element("无法读取选项文本"))?
+                    .map_err(BossError::map_element("无法读取标题文本"))?
                     .trim()
                     .to_string();
 
-                if item_text == target_value {
-                    item.click()
-                        .map_err(BossError::map_element("点击选项失败"))?;
-                    selected = true;
-                    log::info!("  [√] 经验: {}", target_value);
-                    break;
+                if label_text != "经验" {
+                    continue;
                 }
+
+                log::info!("  [找到] 经验字段");
+
+                let select_inner = form_row
+                    .element(".ui-select-inner")
+                    .map_err(BossError::map_element("未找到经验下拉框"))?;
+
+                let select_inner = select_inner
+                    .ok_or_else(|| BossError::element("经验下拉框为空"))?;
+
+                select_inner
+                    .click()
+                    .map_err(BossError::map_element("点击经验下拉框失败"))?;
+
+                clicked = true;
+                break;
             }
 
-            if !selected {
-                return Err(BossError::element(format!("未找到经验选项: {}", target_value)));
+            if clicked {
+                break;
             }
-
-            sleep_random_ms(400, 500);
-            return Ok(());
         }
 
-        Err(BossError::element("未找到经验字段"))
-    }
+        if !clicked {
+            return Err(BossError::element("未找到经验字段"));
+        }
+
+        sleep_random_ms(300, 500);
+
+        let select_items = self
+            .page
+            .eles(".ui-select-item")
+            .map_err(BossError::map_element("未找到经验下拉选项"))?;
+
+        for item in select_items {
+            let item_text = item
+                .text_content()
+                .map_err(BossError::map_element("无法读取经验选项文本"))?
+                .trim()
+                .to_string();
+
+            if item_text == target_value {
+                item.click()
+                    .map_err(BossError::map_element("点击经验选项失败"))?;
+
+                log::info!("  [√] 经验: {}", target_value);
+                sleep_random_ms(400, 500);
+                return Ok(());
+            }
+        }
+
+        Err(BossError::element(format!("未找到经验选项: {}", target_value)))
+}
 
     /// 应届生校园招聘 - 填写学历要求
     fn fill_campus_education(&mut self, job: &JobRecord) -> BResult<()> {
-        // 检查 Excel 中是否有学历值
         if !Self::has_excel_value(&job.学历) {
             log::warn!("  [跳过] 学历字段为空");
             return Ok(());
         }
 
-        // 1. 查找"学历"所在的表单行
-        let requirements_form_rows = self
-            .page
-            .eles(".requirements-info-content .publish-edit-form-row")
-            .map_err(BossError::map_element("未找到表单行"))?;
+        let target_value = job.学历.trim();
 
-        for form_row in requirements_form_rows {
-            // 2. 读取表单行的标题（如"学历"）
-            let label_el = form_row
-                .element(".publish-title")
-                .map_err(BossError::map_element("未找到标题元素"))?;
+        let row_selectors = [
+            ".requirements-info-content .publish-edit-form-row",
+            ".publish-edit-form-row",
+            ".form-row.job-experience-row",
+            ".form-row",
+        ];
 
-            let label_el = label_el.ok_or_else(|| BossError::element("标题元素为空"))?;
+        let mut clicked = false;
 
-            let label_text = label_el
-                .text_content()
-                .map_err(BossError::map_element("无法读取标题文本"))?
-                .trim()
-                .to_string();
+        for row_selector in row_selectors {
+            let form_rows = match self.page.eles(row_selector) {
+                Ok(rows) => rows,
+                Err(_) => continue,
+            };
 
-            // 3. 判断是否是"学历"字段
-            if label_text != "学历" {
-                continue;
-            }
+            for form_row in form_rows {
+                let label_el = match form_row.element(".publish-title") {
+                    Ok(Some(el)) => el,
+                    _ => match form_row.element(".title") {
+                        Ok(Some(el)) => el,
+                        _ => continue,
+                    },
+                };
 
-            log::info!("  [找到] 学历字段");
-
-            // 4. 点击下拉框
-            let select_inner = form_row
-                .element(".ui-select-inner")
-                .map_err(BossError::map_element("未找到下拉框"))?;
-
-            let select_inner = select_inner.ok_or_else(|| BossError::element("下拉框为空"))?;
-
-            select_inner
-                .click()
-                .map_err(BossError::map_element("点击下拉框失败"))?;
-
-            sleep_random_ms(300, 500);
-
-            // 5. 查找所有下拉选项
-            let select_items = self
-                .page
-                .eles(".ui-select-item")
-                .map_err(BossError::map_element("未找到下拉选项"))?;
-
-            // 6. 遍历选项，找到匹配的并点击
-            let target_value = job.学历.trim();
-            let mut selected = false;
-
-            for item in select_items {
-                let item_text = item
+                let label_text = label_el
                     .text_content()
-                    .map_err(BossError::map_element("无法读取选项文本"))?
+                    .map_err(BossError::map_element("无法读取标题文本"))?
                     .trim()
                     .to_string();
 
-                if item_text == target_value {
+                if label_text != "学历" {
+                    continue;
+                }
+
+                log::info!("  [找到] 学历字段");
+
+                let select_inner = form_row
+                    .element(".ui-select-inner")
+                    .map_err(BossError::map_element("未找到学历下拉框"))?;
+
+                let select_inner = select_inner
+                    .ok_or_else(|| BossError::element("学历下拉框为空"))?;
+
+                select_inner
+                    .click()
+                    .map_err(BossError::map_element("点击学历下拉框失败"))?;
+
+                clicked = true;
+                break;
+            }
+
+            if clicked {
+                break;
+            }
+        }
+
+        if !clicked {
+            return Err(BossError::element("未找到学历字段"));
+        }
+
+        sleep_random_ms(300, 500);
+
+        let select_items = self
+            .page
+            .eles(".ui-select-item")
+            .map_err(BossError::map_element("未找到学历下拉选项"))?;
+
+        for item in select_items {
+            let item_text = item
+                .text_content()
+                .map_err(BossError::map_element("无法读取学历选项文本"))?
+                .trim()
+                .to_string();
+
+            if item_text == target_value {
+                item.click()
+                    .map_err(BossError::map_element("点击学历选项失败"))?;
+
+                log::info!("  [√] 学历: {}", target_value);
+                sleep_random_ms(400, 500);
+                return Ok(());
+            }
+        }
+
+        Err(BossError::element(format!("未找到学历选项: {}", target_value)))
+}
+
+    /// 应届生校园招聘 - 填写薪资范围
+    fn fill_campus_salary(&mut self, job: &JobRecord) -> BResult<()> {
+        if !Self::has_excel_value(&job.薪资低) {
+            log::warn!("  [跳过] 薪资字段为空");
+            return Ok(());
+        }
+
+        log::info!("  [开始] 填写薪资");
+
+        let row_selectors = [
+            ".requirements-info-content .publish-edit-form-row",
+            ".publish-edit-form-row",
+            ".form-row.job-experience-row",
+            ".form-row",
+        ];
+
+        let mut salary_row_found = false;
+        let mut salary_selects = Vec::new();
+
+        for row_selector in row_selectors {
+            let form_rows = match self.page.eles(row_selector) {
+                Ok(rows) => rows,
+                Err(_) => continue,
+            };
+
+            for form_row in form_rows {
+                let label_el = match form_row.element(".publish-title") {
+                    Ok(Some(el)) => el,
+                    _ => match form_row.element(".title") {
+                        Ok(Some(el)) => el,
+                        _ => continue,
+                    },
+                };
+
+                let label_text = label_el
+                    .text_content()
+                    .map_err(BossError::map_element("无法读取标题文本"))?
+                    .trim()
+                    .to_string();
+
+                if label_text != "薪资范围" && label_text != "薪资" {
+                    continue;
+                }
+
+                log::info!("  [找到] 薪资范围字段");
+                salary_row_found = true;
+
+                if let Ok(selects) = form_row.elements(".ui-select-selection") {
+                    salary_selects = selects;
+                }
+
+                break;
+            }
+
+            if salary_row_found {
+                break;
+            }
+        }
+
+        if !salary_row_found {
+            return Err(BossError::element("未找到薪资范围字段"));
+        }
+
+        // 有些 form-row 版本薪资行里只能取到 1 个下拉，另外两个在相邻节点或全局结构里。
+        // 因此不足 2 个时退回页面全局下拉列表；后面通过“点击后是否存在目标选项”来识别正确下拉。
+        if salary_selects.len() < 2 {
+            salary_selects = self
+                .page
+                .eles(".ui-select-selection")
+                .map_err(BossError::map_element("未找到页面下拉框"))?;
+        }
+
+        if salary_selects.is_empty() {
+            return Err(BossError::element("未找到薪资下拉框"));
+        }
+
+        let target_min_salary = job.薪资低.trim();
+        let target_max_salary = job.薪资高.trim();
+        let mut min_index: Option<usize> = None;
+
+        // 选择最低月薪：从所有候选下拉中逐个尝试，直到打开后能看到目标薪资选项。
+        for (idx, select) in salary_selects.iter().enumerate() {
+            if select.click().is_err() {
+                continue;
+            }
+            sleep_random_ms(300, 500);
+
+            let items = match self.page.eles(".ui-select-item") {
+                Ok(items) => items,
+                Err(_) => continue,
+            };
+
+            let mut selected = false;
+            for item in items.iter().rev() {
+                let item_text = item
+                    .text_content()
+                    .map_err(BossError::map_element("无法读取最低月薪选项文本"))?;
+
+                if item_text.trim() == target_min_salary {
                     item.click()
-                        .map_err(BossError::map_element("点击选项失败"))?;
+                        .map_err(BossError::map_element("点击最低月薪失败"))?;
                     selected = true;
-                    log::info!("  [√] 学历: {}", target_value);
+                    min_index = Some(idx);
+                    log::info!("  [√] 选择最低月薪: {}", target_min_salary);
                     break;
                 }
             }
 
-            if !selected {
-                return Err(BossError::element(format!("未找到学历选项: {}", target_value)));
-            }
-
-            sleep_random_ms(400, 500);
-            return Ok(());
-        }
-
-        Err(BossError::element("未找到学历字段"))
-    }
-
-    /// 应届生校园招聘 - 填写薪资范围
-    fn fill_campus_salary(&mut self, job: &JobRecord) -> BResult<()> {
-    if !Self::has_excel_value(&job.薪资低) {
-        log::warn!("  [跳过] 薪资字段为空");
-        return Ok(());
-    }
-
-    log::info!("  [开始] 填写薪资");
-
-    // 1. 查找"薪资范围"所在的表单行
-    let requirements_form_rows = self
-        .page
-        .eles(".requirements-info-content .publish-edit-form-row")
-        .map_err(BossError::map_element("未找到表单行"))?;
-
-    for form_row in requirements_form_rows {
-        // 2. 读取表单行的标题（如"薪资范围"）
-        let label_el = form_row
-            .element(".publish-title")
-            .map_err(BossError::map_element("未找到标题元素"))?; 
-
-        let label_el = label_el.ok_or_else(|| BossError::element("标题元素为空"))?;
-        let label_text = label_el
-            .text_content()
-            .map_err(BossError::map_element("无法读取标题文本"))?
-            .trim()
-            .to_string();
-
-        // 3. 判断是否是"薪资范围"字段
-        if label_text != "薪资范围" {
-            continue;
-        }
-
-        log::info!("  [找到] 薪资范围字段");
-
-        // 4. 点击最低月薪下拉框
-        let min_salary_select = form_row
-            .element(".ui-select-selection")
-            .map_err(BossError::map_element("未找到最低月薪下拉框"))?
-            .ok_or_else(|| BossError::element("下拉框未找到"))?;
-        min_salary_select.click().map_err(BossError::map_element("点击最低月薪下拉框失败"))?;
-
-        sleep_random_ms(300, 500);
-
-        // 5. 选择最低月薪
-        let min_salary_items = self
-            .page
-            .eles(".ui-select-item")
-            .map_err(BossError::map_element("未找到薪资选项"))?;
-        let target_min_salary = job.薪资低.trim();
-        let mut selected_min_salary = false;
-
-        // 选择项从后往前选择
-        for item in min_salary_items.iter().rev() {
-            let item_text = item.text_content().map_err(BossError::map_element("无法读取选项文本"))?;
-            if item_text.trim() == target_min_salary {
-                item.click().map_err(BossError::map_element("点击最低月薪失败"))?;
-                selected_min_salary = true;
-                log::info!("  [√] 选择最低月薪: {}", target_min_salary);
+            if selected {
                 break;
             }
         }
 
-        if !selected_min_salary {
-            return Err(BossError::element(format!("未找到最低月薪: {}", target_min_salary)));
-        }
+        let min_index = min_index
+            .ok_or_else(|| BossError::element(format!("未找到最低月薪: {}", target_min_salary)))?;
 
-        // 6. 点击最高月薪下拉框
-        let max_salary_select = form_row
-            .element(".ui-select-selection")
-            .map_err(BossError::map_element("未找到最高月薪下拉框"))?
-            .ok_or_else(|| BossError::element("最高月薪下拉框未找到"))?;
-        max_salary_select.click().map_err(BossError::map_element("点击最高月薪下拉框失败"))?;
+        let mut max_index: Option<usize> = None;
 
-        sleep_random_ms(300, 500);
+        // 选择最高月薪：从最低月薪之后的下拉继续尝试，避免重复点回最低月薪。
+        for (idx, select) in salary_selects.iter().enumerate().skip(min_index + 1) {
+            if select.click().is_err() {
+                continue;
+            }
+            sleep_random_ms(300, 500);
 
-        // 7. 选择最高月薪
-        let max_salary_items = self
-            .page
-            .eles(".ui-select-item")
-            .map_err(BossError::map_element("未找到薪资选项"))?;
-        let target_max_salary = job.薪资高.trim();
-        let mut selected_max_salary = false;
+            let items = match self.page.eles(".ui-select-item") {
+                Ok(items) => items,
+                Err(_) => continue,
+            };
 
-        // 选择项从后往前选择
-        for item in max_salary_items.iter().rev() {
-            let item_text = item.text_content().map_err(BossError::map_element("无法读取选项文本"))?;
-            if item_text.trim() == target_max_salary {
-                item.click().map_err(BossError::map_element("点击最高月薪失败"))?;
-                selected_max_salary = true;
-                log::info!("  [√] 选择最高月薪: {}", target_max_salary);
+            let mut selected = false;
+            for item in items.iter().rev() {
+                let item_text = item
+                    .text_content()
+                    .map_err(BossError::map_element("无法读取最高月薪选项文本"))?;
+
+                if item_text.trim() == target_max_salary {
+                    item.click()
+                        .map_err(BossError::map_element("点击最高月薪失败"))?;
+                    selected = true;
+                    max_index = Some(idx);
+                    log::info!("  [√] 选择最高月薪: {}", target_max_salary);
+                    break;
+                }
+            }
+
+            if selected {
                 break;
             }
         }
 
-        if !selected_max_salary {
-            return Err(BossError::element(format!("未找到最高月薪: {}", target_max_salary)));
-        }
+        let max_index = max_index
+            .ok_or_else(|| BossError::element(format!("未找到最高月薪: {}", target_max_salary)))?;
 
-        // 8. 点击薪资单位下拉框（可选字段）
         if !Self::has_excel_value(&job.薪资单位) {
             log::info!("  [跳过] 薪资单位字段为空");
             sleep_random_ms(400, 500);
             return Ok(());
         }
 
-        let salary_unit_select = match form_row.element(".ui-select-selection") {
-            Ok(Some(el)) => el,
-            _ => {
-                log::warn!("  [跳过] 未找到薪资单位下拉框，该字段可能不存在");
-                sleep_random_ms(400, 500);
-                return Ok(());
-            }
-        };
-
-        if salary_unit_select.click().is_err() {
-            log::warn!("  [跳过] 点击薪资单位下拉框失败");
-            sleep_random_ms(400, 500);
-            return Ok(());
-        }
-
-        sleep_random_ms(300, 500);
-
-        // 9. 选择薪资单位
-        let salary_unit_items = match self.page.eles(".ui-select-item") {
-            Ok(items) => items,
-            Err(_) => {
-                log::warn!("  [跳过] 未找到薪资单位选项");
-                sleep_random_ms(400, 500);
-                return Ok(());
-            }
-        };
-
         let target_salary_unit = job.薪资单位.trim();
         let mut selected_salary_unit = false;
 
-        // 选择项从后往前选择
-        for item in salary_unit_items.iter().rev() {
-            if let Ok(item_text) = item.text_content() {
-                if item_text.trim() == target_salary_unit {
-                    if item.click().is_ok() {
-                        selected_salary_unit = true;
-                        log::info!("  [√] 选择薪资单位: {}", target_salary_unit);
-                        break;
+        // 选择薪资单位：通常是最高月薪之后的下拉；找不到时仅警告跳过。
+        for (_idx, select) in salary_selects.iter().enumerate().skip(max_index + 1) {
+            if select.click().is_err() {
+                continue;
+            }
+            sleep_random_ms(300, 500);
+
+            let items = match self.page.eles(".ui-select-item") {
+                Ok(items) => items,
+                Err(_) => continue,
+            };
+
+            for item in items.iter().rev() {
+                if let Ok(item_text) = item.text_content() {
+                    if item_text.trim() == target_salary_unit {
+                        if item.click().is_ok() {
+                            selected_salary_unit = true;
+                            log::info!("  [√] 选择薪资单位: {}", target_salary_unit);
+                            break;
+                        }
                     }
                 }
+            }
+
+            if selected_salary_unit {
+                break;
             }
         }
 
@@ -366,10 +431,7 @@ impl<'a> Poster<'a> {
         }
 
         sleep_random_ms(400, 500);
-        return Ok(());
-    }
-
-    Err(BossError::element("未找到薪资范围字段"))
+        Ok(())
 }
 
     /// 应届生校园招聘 - 填写职位关键词
@@ -491,36 +553,115 @@ impl<'a> Poster<'a> {
 
     /// 应届生校园招聘 - 填写毕业时间（届别）
     fn fill_campus_graduate_time(&mut self, job: &JobRecord) -> BResult<()> {
-        // 检查 Excel 中是否有届别值
-       // 获取目标毕业年份（例如："2026"）
-    let target_year = &job.届别; // 假设是从 job 中获取目标年份
-
-    // 1. 定位并点击毕业时间下拉框
-    let graduation_select = self.page
-        .ele(".publish-edit-form-row.graduation-time-wrap .ui-select-selection")?
-        .ok_or_else(|| BossError::element("毕业时间下拉按钮不存在"))?;
-    graduation_select.click().map_err(BossError::map_element("点击下拉框失败"))?;
-
-
-    // 3. 查找目标年份并点击
-    let items = self.page.eles(".publish-edit-form-row.graduation-time-wrap .ui-select-item")?;
-
-    let mut selected = false;
-    for item in items {
-        let text = item.text()?;
-        if text.trim() == target_year {
-            item.click().map_err(BossError::map_element("点击目标毕业年份失败"))?;
-            selected = true;
-            break;
+        if !Self::has_excel_value(&job.届别) {
+            log::warn!("  [跳过] 届别字段为空");
+            return Ok(());
         }
-    }
 
-    if !selected {
-        return Err(BossError::element(format!("未找到目标毕业年份: {}", target_year)));
-    }
+        let target_year = job.届别.trim();
+        let direct_selectors = [
+            ".publish-edit-form-row.graduation-time-wrap .ui-select-selection",
+            ".form-row.graduation-time-wrap .ui-select-selection",
+            ".graduation-time-wrap .ui-select-selection",
+        ];
 
-    Ok(())
-    }
+        let mut clicked = false;
+
+        // 1. 优先使用带 graduation-time-wrap 的直接选择器
+        for selector in direct_selectors {
+            match self.page.ele(selector) {
+                Ok(Some(el)) => {
+                    el.click()
+                        .map_err(BossError::map_element("点击毕业时间下拉框失败"))?;
+                    clicked = true;
+                    break;
+                }
+                _ => continue,
+            }
+        }
+
+        // 2. 兼容另一种 form-row/title 风格：通过标题“毕业时间/届别”找到所在行
+        if !clicked {
+            let row_selectors = [
+                ".requirements-info-content .publish-edit-form-row",
+                ".publish-edit-form-row",
+                ".form-row.job-experience-row",
+                ".form-row",
+            ];
+
+            for row_selector in row_selectors {
+                let form_rows = match self.page.eles(row_selector) {
+                    Ok(rows) => rows,
+                    Err(_) => continue,
+                };
+
+                for form_row in form_rows {
+                    let label_el = match form_row.element(".publish-title") {
+                        Ok(Some(el)) => el,
+                        _ => match form_row.element(".title") {
+                            Ok(Some(el)) => el,
+                            _ => continue,
+                        },
+                    };
+
+                    let label_text = label_el
+                        .text_content()
+                        .map_err(BossError::map_element("无法读取标题文本"))?
+                        .trim()
+                        .to_string();
+
+                    if label_text != "毕业时间" && label_text != "届别" {
+                        continue;
+                    }
+
+                    let graduation_select = form_row
+                        .element(".ui-select-selection")
+                        .map_err(BossError::map_element("未找到毕业时间下拉框"))?;
+
+                    let graduation_select = graduation_select
+                        .ok_or_else(|| BossError::element("毕业时间下拉框为空"))?;
+
+                    graduation_select
+                        .click()
+                        .map_err(BossError::map_element("点击毕业时间下拉框失败"))?;
+
+                    clicked = true;
+                    break;
+                }
+
+                if clicked {
+                    break;
+                }
+            }
+        }
+
+        if !clicked {
+            return Err(BossError::element("毕业时间下拉按钮不存在"));
+        }
+
+        sleep_random_ms(300, 500);
+
+        let items = self
+            .page
+            .eles(".ui-select-item")
+            .map_err(BossError::map_element("未找到毕业时间选项"))?;
+
+        for item in items {
+            let text = item
+                .text_content()
+                .map_err(BossError::map_element("无法读取毕业时间选项文本"))?;
+
+            if text.trim() == target_year {
+                item.click()
+                    .map_err(BossError::map_element("点击目标毕业年份失败"))?;
+                log::info!("  [√] 毕业时间: {}", target_year);
+                sleep_random_ms(400, 500);
+                return Ok(());
+            }
+        }
+
+        Err(BossError::element(format!("未找到目标毕业年份: {}", target_year)))
+}
 
     /// 应届生校园招聘 - 填写招聘截止时间
     fn fill_campus_deadline(&mut self, job: &JobRecord) -> BResult<()> {

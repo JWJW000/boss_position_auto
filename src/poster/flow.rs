@@ -30,8 +30,8 @@ impl<'a> Poster<'a> {
 
         self.run_step("招聘类型", |s| s.fill_job_type(job))?;
         self.run_step("职位名称", |s| s.fill_job_title(job))?;
-        self.run_step("职位类型", |s| s.fill_job_category(job))?;
         self.run_step("职位描述", |s| s.fill_job_desc(job))?;
+        self.run_step("职位类型", |s| s.fill_job_category(job))?;
         self.fill_requirements_by_type(job)?;
 
         let result_url = self.submit(job)?;
