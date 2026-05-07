@@ -1,45 +1,84 @@
 use super::*;
 
 impl<'a> Poster<'a> {
-    /// Open the work-address selector and choose a saved address that matches the Excel value.
- pub(super) fn fill_city(&mut self) -> BResult<()> {
-    log::info!("  [开始] 填写工作地址");
+        pub(super) fn fill_city(&mut self) -> BResult<()> {
+            log::info!("  [开始] 填写工作地址");
 
-    // 1. 查找工作地址输入框并点击
-    let city_input = self
-        .page
-        .ele(".publish-edit-form-row .job-edit-click-select-content .ipt-wrap input")
-        .map_err(BossError::map_element("未找到工作地址输入框"))?
-        .ok_or_else(||BossError::element("未找到工作地址"))?;
+            // 1. 查找工作地址输入框并点击
+            let city_input = match self
+                .page
+                .ele(".publish-edit-form-row .job-edit-click-select-content .ipt-wrap input") {
+                Ok(Some(input)) => input,
+                _ => {
+                    log::warn!("  [跳过] 未找到工作地址输入框，该字段可能不存在");
+                    return Ok(());
+                }
+            };
 
-    city_input.click().map_err(BossError::map_element("点击工作地址输入框失败"))?;
+            if city_input.click().is_err() {
+                log::warn!("  [跳过] 点击工作地址输入框失败");
+                return Ok(());
+            }
 
-    sleep_random_ms(300, 500); // 添加适当的延时，模拟点击操作
+            sleep_random_ms(500, 800);
 
-    // 2. 查找弹窗中的地址项
-    let address_items = self
-        .page
-        .eles(".single-address-select-wrap .table-content-box .address-item")
-        .map_err(BossError::map_element("未找到地址项"))?;
+            // 2. 查找弹窗中的第一个地址项
+            let address_items = match self
+                .page
+                .eles(".single-address-select-wrap .table-content-box .address-item") {
+                Ok(items) => items,
+                Err(_) => {
+                    log::warn!("  [跳过] 未找到地址项列表");
+                    return Ok(());
+                }
+            };
 
-    // 3. 选择第一个地址并点击
-    if let Some(first_item) = address_items.first() {
-        // 点击地址项的 "radio-box" 来选择该地址
-        let radio_box = first_item
-            .element(".radio-box")
-            .map_err(BossError::map_element("未找到地址选择框"))?
-            .ok_or_else(||BossError::element("未找到工作地址"))?;
-        radio_box.click().map_err(BossError::map_element("点击地址选择框失败"))?;
+            let first_item = match address_items.first() {
+                Some(item) => item,
+                None => {
+                    log::warn!("  [跳过] 地址列表为空");
+                    return Ok(());
+                }
+            };
 
-        log::info!("  [√] 选择了第一个工作地址");
+            // 3. 点击第一个地址的单选框
+            let radio_box = match first_item.element(".radio-box") {
+                Ok(Some(rb)) => rb,
+                _ => {
+                    log::warn!("  [跳过] 未找到地址选择框");
+                    return Ok(());
+                }
+            };
 
-    
+            if radio_box.click().is_err() {
+                log::warn!("  [跳过] 点击地址选择框失败");
+                return Ok(());
+            }
 
-        Ok(())
-    } else {
-        Err(BossError::element("未找到地址项"))
-    }
-}
+            log::info!("  [√] 选择了第一个工作地址");
 
+            sleep_random_ms(300, 500);
 
+            // 4. 点击「使用该地址」按钮
+            let sure_btn = match self
+                .page
+                .ele(".single-address-select-wrap .address-footer .btn-sure-v2") {
+                Ok(Some(btn)) => btn,
+                _ => {
+                    log::warn!("  [跳过] 未找到使用该地址按钮，该按钮可能不存在");
+                    return Ok(());
+                }
+            };
+
+            if sure_btn.click().is_err() {
+                log::warn!("  [跳过] 点击使用该地址按钮失败");
+                return Ok(());
+            }
+
+            log::info!("  [√] 已确认使用该工作地址");
+
+            sleep_random_ms(300, 500);
+
+            Ok(())
+        }
 }

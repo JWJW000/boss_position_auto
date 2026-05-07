@@ -9,18 +9,22 @@ impl<'a> Poster<'a> {
 
         // 等待表单加载（等待职位名称输入框出现）
         log::info!("等待表单加载...");
-        sleep_random_ms(1200, 1800);
+        sleep_random_ms(1500, 2000);  // 增加初始等待时间
 
         let mut form_loaded = false;
-        for _ in 0..10 {
+        for attempt in 0..30 {  // 增加重试次数到30次
             if let Ok(Some(_)) = self.page.ele("css:input[name='jobName']") {
                 log::info!("表单已加载");
                 form_loaded = true;
                 break;
             }
+            if attempt % 5 == 0 && attempt > 0 {
+                log::info!("等待表单加载... (尝试 {}/30)", attempt);
+            }
             sleep_random_ms(900, 1300);
         }
         if !form_loaded {
+            log::error!("表单加载超时（已等待30次重试）");
             return Err(BossError::element("职位名称输入框"));
         }
 

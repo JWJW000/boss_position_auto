@@ -4,8 +4,10 @@
 //!   - [boss]: 扫码登录 + Cookie管理
 //!   - [excel]: Excel读取
 //!   - [poster]: 职位表单填写与发布
+//!   - [config]: 配置文件管理
 
 pub mod boss;
+pub mod config;
 pub mod excel;
 pub mod error;
 pub mod poster;
@@ -13,5 +15,6 @@ pub mod utils;
 
 
 pub use boss::BossClient;
+pub use config::AppConfig;
 pub use excel::{ExcelReader, JobRecord, FailedJob, export_failed_jobs};
 pub use poster::Poster;

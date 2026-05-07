@@ -11,8 +11,8 @@ impl<'a> Poster<'a> {
         log::info!("  [开始] 应届生校园招聘岗位要求填写");
 
         // ==================== 第一步：经验要求 ====================
-        log::info!("  [步骤1] 填写经验要求");
-        self.fill_campus_experience(job)?;
+        // log::info!("  [步骤1] 填写经验要求");
+        // self.fill_campus_experience(job)?;
 
         // ==================== 第二步：学历要求 ====================
         log::info!("  [步骤2] 填写学历要求");
@@ -311,36 +311,58 @@ impl<'a> Poster<'a> {
             return Err(BossError::element(format!("未找到最高月薪: {}", target_max_salary)));
         }
 
-        // 8. 点击薪资单位下拉框
-        let salary_unit_select = form_row
-            .element(".ui-select-selection")
-            .map_err(BossError::map_element("未找到薪资单位下拉框"))?
-            .ok_or_else(|| BossError::element("薪资单位下拉框未找到"))?;
-        salary_unit_select.click().map_err(BossError::map_element("点击薪资单位下拉框失败"))?;
+        // 8. 点击薪资单位下拉框（可选字段）
+        if !Self::has_excel_value(&job.薪资单位) {
+            log::info!("  [跳过] 薪资单位字段为空");
+            sleep_random_ms(400, 500);
+            return Ok(());
+        }
+
+        let salary_unit_select = match form_row.element(".ui-select-selection") {
+            Ok(Some(el)) => el,
+            _ => {
+                log::warn!("  [跳过] 未找到薪资单位下拉框，该字段可能不存在");
+                sleep_random_ms(400, 500);
+                return Ok(());
+            }
+        };
+
+        if salary_unit_select.click().is_err() {
+            log::warn!("  [跳过] 点击薪资单位下拉框失败");
+            sleep_random_ms(400, 500);
+            return Ok(());
+        }
 
         sleep_random_ms(300, 500);
 
         // 9. 选择薪资单位
-        let salary_unit_items = self
-            .page
-            .eles(".ui-select-item")
-            .map_err(BossError::map_element("未找到薪资单位选项"))?;
+        let salary_unit_items = match self.page.eles(".ui-select-item") {
+            Ok(items) => items,
+            Err(_) => {
+                log::warn!("  [跳过] 未找到薪资单位选项");
+                sleep_random_ms(400, 500);
+                return Ok(());
+            }
+        };
+
         let target_salary_unit = job.薪资单位.trim();
         let mut selected_salary_unit = false;
 
         // 选择项从后往前选择
         for item in salary_unit_items.iter().rev() {
-            let item_text = item.text_content().map_err(BossError::map_element("无法读取选项文本"))?;
-            if item_text.trim() == target_salary_unit {
-                item.click().map_err(BossError::map_element("点击薪资单位失败"))?;
-                selected_salary_unit = true;
-                log::info!("  [√] 选择薪资单位: {}", target_salary_unit);
-                break;
+            if let Ok(item_text) = item.text_content() {
+                if item_text.trim() == target_salary_unit {
+                    if item.click().is_ok() {
+                        selected_salary_unit = true;
+                        log::info!("  [√] 选择薪资单位: {}", target_salary_unit);
+                        break;
+                    }
+                }
             }
         }
 
         if !selected_salary_unit {
-            return Err(BossError::element(format!("未找到薪资单位: {}", target_salary_unit)));
+            log::warn!("  [跳过] 未找到薪资单位选项: {}", target_salary_unit);
         }
 
         sleep_random_ms(400, 500);

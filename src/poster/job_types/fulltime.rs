@@ -30,7 +30,10 @@ impl<'a> Poster<'a> {
         log::info!("  [步骤5] 填写是否驻外");
         self.fill_full_time_overseas(job)?;
 
-        self.fill_city();
+        // ==================== 第六步：工作地址 ====================
+        log::info!("  [步骤6] 填写工作地址");
+        self.fill_city()?;
+
         log::info!("  [完成] 社招全职岗位要求填写完成");
         Ok(())
     }
@@ -354,24 +357,27 @@ impl<'a> Poster<'a> {
     log::info!("  [开始] 填写是否驻外");
 
     // 1. 查找"是否驻外"所在的表单行
-    let requirements_form_rows = self
+    let requirements_form_rows = match self
         .page
-        .eles(".publish-edit-form-row.overseas-entry-container")
-        .map_err(BossError::map_element("未找到表单行"))?;
+        .eles(".publish-edit-form-row.overseas-entry-container") {
+        Ok(rows) => rows,
+        Err(_) => {
+            log::warn!("  [跳过] 未找到是否驻外表单行，该字段可能不存在");
+            return Ok(());
+        }
+    };
 
     for form_row in requirements_form_rows {
         // 2. 读取表单行的标题（如"是否驻外"）
-        let label_el = form_row
-            .element(".publish-title")
-            .map_err(BossError::map_element("未找到标题元素"))?;
+        let label_el = match form_row.element(".publish-title") {
+            Ok(Some(el)) => el,
+            _ => continue,
+        };
 
-        let label_el = label_el.ok_or_else(|| BossError::element("标题元素为空"))?;
-
-        let label_text = label_el
-            .text_content()
-            .map_err(BossError::map_element("无法读取标题文本"))?
-            .trim()
-            .to_string();
+        let label_text = match label_el.text_content() {
+            Ok(text) => text.trim().to_string(),
+            Err(_) => continue,
+        };
 
         // 3. 判断是否是"是否驻外"字段
         if label_text != "是否驻外" {
@@ -381,9 +387,13 @@ impl<'a> Poster<'a> {
         log::info!("  [找到] 是否驻外字段");
 
         // 4. 查找所有选项
-        let options = form_row
-            .elements(".entry-content .chose-item")
-            .map_err(BossError::map_element("未找到选项"))?;
+        let options = match form_row.elements(".entry-content .chose-item") {
+            Ok(opts) => opts,
+            Err(_) => {
+                log::warn!("  [跳过] 未找到是否驻外选项");
+                return Ok(());
+            }
+        };
 
         // 5. 获取目标选项
         let target_value = job.是否驻外.trim(); // 获取Excel中的值
@@ -391,24 +401,27 @@ impl<'a> Poster<'a> {
         let mut selected = false;
 
         for option in options {
-            let option_text = option.text_content().map_err(BossError::map_element("无法读取选项文本"))?;
-            if option_text.trim() == target_value {
-                option.click().map_err(BossError::map_element("点击选项失败"))?;
-                selected = true;
-                log::info!("  [√] 选择是否驻外: {}", target_value);
-                break;
+            if let Ok(option_text) = option.text_content() {
+                if option_text.trim() == target_value {
+                    if option.click().is_ok() {
+                        selected = true;
+                        log::info!("  [√] 选择是否驻外: {}", target_value);
+                        break;
+                    }
+                }
             }
         }
 
         if !selected {
-            return Err(BossError::element(format!("未找到是否驻外选项: {}", target_value)));
+            log::warn!("  [跳过] 未找到是否驻外选项: {}", target_value);
         }
 
         sleep_random_ms(400, 500);
         return Ok(());
     }
 
-    Err(BossError::element("未找到是否驻外字段"))
+    log::warn!("  [跳过] 未找到是否驻外字段，该字段可能不存在");
+    Ok(())
 }
 
     /// 社招全职 - 填写职位关键词
