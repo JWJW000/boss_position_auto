@@ -19,7 +19,10 @@ impl<'a> Poster<'a> {
             items = self.collect_job_type_items();
             last_debug_texts = Self::job_type_texts(&items);
             if !items.is_empty() {
-                log::info!("  [DEBUG] 招聘类型区域已加载，找到 {} 个候选元素", items.len());
+                log::info!(
+                    "  [DEBUG] 招聘类型区域已加载，找到 {} 个候选元素",
+                    items.len()
+                );
                 break;
             }
 
@@ -36,7 +39,10 @@ impl<'a> Poster<'a> {
 
         if items.is_empty() {
             let page_state = self.job_type_page_state();
-            log::error!("  [ERROR] 招聘类型区域加载超时（已等待50次重试）{}", page_state);
+            log::error!(
+                "  [ERROR] 招聘类型区域加载超时（已等待50次重试）{}",
+                page_state
+            );
             return Err(BossError::element("招聘类型区域未加载"));
         }
 
@@ -46,7 +52,9 @@ impl<'a> Poster<'a> {
 
         // 3) 滚动到可见区域并等待渲染稳定
         let clicked = if let Some(el) = target_el {
-            let _ = el.run_js("this.scrollIntoView({block:'center', inline:'center', behavior:'smooth'});");
+            let _ = el.run_js(
+                "this.scrollIntoView({block:'center', inline:'center', behavior:'smooth'});",
+            );
             sleep_random_ms(900, 1300);
             match el.click() {
                 Ok(()) => {
@@ -69,8 +77,7 @@ impl<'a> Poster<'a> {
             if js_result != "clicked" {
                 return Err(BossError::element(format!(
                     "未找到招聘类型选项: {}，候选项={:?}",
-                    target_text,
-                    last_debug_texts
+                    target_text, last_debug_texts
                 )));
             }
         }
@@ -148,7 +155,9 @@ impl<'a> Poster<'a> {
             }
             let replace = best
                 .as_ref()
-                .map(|(best_score, best_len, _)| score < *best_score || (score == *best_score && len < *best_len))
+                .map(|(best_score, best_len, _)| {
+                    score < *best_score || (score == *best_score && len < *best_len)
+                })
                 .unwrap_or(true);
             if replace {
                 best = Some((score, len, item));
@@ -252,4 +261,3 @@ impl<'a> Poster<'a> {
             .unwrap_or_else(|| "页面状态读取失败".to_string())
     }
 }
-

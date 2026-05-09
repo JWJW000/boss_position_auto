@@ -59,7 +59,10 @@ impl RecruitmentKind {
         } else if clean.contains("社招") || clean.contains("全职") {
             Ok(Self::FullTime)
         } else {
-            Err(BossError::PostFailed(format!("无法识别招聘类型: {}", value)))
+            Err(BossError::PostFailed(format!(
+                "无法识别招聘类型: {}",
+                value
+            )))
         }
     }
 

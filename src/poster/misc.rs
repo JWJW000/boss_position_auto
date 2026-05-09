@@ -78,7 +78,6 @@ impl<'a> Poster<'a> {
         v
     }
 
-
     fn is_publish_success_url(url: &str) -> bool {
         let u = url.to_ascii_lowercase();
         u.contains("success")
@@ -142,12 +141,16 @@ impl<'a> Poster<'a> {
 
     /// Click publish and turn the resulting page or validation hints into a result.
     pub(super) fn submit(&mut self, _job: &JobRecord) -> BResult<String> {
-        let btn = SelectorMap::find_first(self.page, &self.selectors.submit_btn)
-            .or_else(|| SelectorMap::find_first(self.page, &[
-                "css:.btn-primary".to_string(),
-                "css:button.btn".to_string(),
-                "xpath://button[contains(@class,'primary')]".to_string(),
-            ]));
+        let btn = SelectorMap::find_first(self.page, &self.selectors.submit_btn).or_else(|| {
+            SelectorMap::find_first(
+                self.page,
+                &[
+                    "css:.btn-primary".to_string(),
+                    "css:button.btn".to_string(),
+                    "xpath://button[contains(@class,'primary')]".to_string(),
+                ],
+            )
+        });
 
         let btn = btn.ok_or_else(|| BossError::element("发布按钮"))?;
 
@@ -159,7 +162,9 @@ impl<'a> Poster<'a> {
         let mut last_url = String::new();
 
         while std::time::Instant::now() < deadline {
-            url = self.page.url()
+            url = self
+                .page
+                .url()
                 .map_err(BossError::map_cdp("读取发布结果URL失败"))?;
 
             // 先检查是否有表单错误
@@ -202,4 +207,3 @@ impl<'a> Poster<'a> {
         )))
     }
 }
-

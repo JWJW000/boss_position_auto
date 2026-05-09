@@ -1,8 +1,8 @@
 use rust_xlsxwriter::{Format, Workbook, Worksheet};
 use std::path::Path;
 
-use crate::error::BossError;
 use super::record::JobRecord;
+use crate::error::BossError;
 
 /// 失败记录
 #[derive(Debug, Clone)]
@@ -23,8 +23,7 @@ pub fn export_failed_jobs(failed_jobs: &[FailedJob], output_path: &Path) -> Resu
         .set_background_color(rust_xlsxwriter::Color::RGB(0xD3D3D3));
 
     // 设置错误信息格式
-    let error_format = Format::new()
-        .set_font_color(rust_xlsxwriter::Color::RGB(0xFF0000));
+    let error_format = Format::new().set_font_color(rust_xlsxwriter::Color::RGB(0xFF0000));
 
     // 写入表头
     write_header(worksheet, &header_format)?;
@@ -39,7 +38,8 @@ pub fn export_failed_jobs(failed_jobs: &[FailedJob], output_path: &Path) -> Resu
     adjust_column_widths(worksheet)?;
 
     // 保存文件
-    workbook.save(output_path)
+    workbook
+        .save(output_path)
         .map_err(|e| BossError::Excel(format!("保存失败记录Excel失败: {}", e)))?;
 
     Ok(())
@@ -72,7 +72,8 @@ fn write_header(worksheet: &mut Worksheet, format: &Format) -> Result<(), BossEr
     ];
 
     for (col, header) in headers.iter().enumerate() {
-        worksheet.write_string_with_format(0, col as u16, *header, format)
+        worksheet
+            .write_string_with_format(0, col as u16, *header, format)
             .map_err(|e| BossError::Excel(format!("写入表头失败: {}", e)))?;
     }
 
@@ -89,11 +90,13 @@ fn write_job_row(
     let job = &failed.job;
 
     // 原始行号
-    worksheet.write_number(row, 0, failed.row_number as f64)
+    worksheet
+        .write_number(row, 0, failed.row_number as f64)
         .map_err(|e| BossError::Excel(format!("写入行号失败: {}", e)))?;
 
     // 失败原因（红色）
-    worksheet.write_string_with_format(row, 1, &failed.error_message, error_format)
+    worksheet
+        .write_string_with_format(row, 1, &failed.error_message, error_format)
         .map_err(|e| BossError::Excel(format!("写入失败原因失败: {}", e)))?;
 
     // 岗位信息
@@ -120,7 +123,8 @@ fn write_job_row(
     ];
 
     for (col, value) in values.iter().enumerate() {
-        worksheet.write_string(row, (col + 2) as u16, value.as_str())
+        worksheet
+            .write_string(row, (col + 2) as u16, value.as_str())
             .map_err(|e| BossError::Excel(format!("写入数据失败: {}", e)))?;
     }
 
@@ -130,20 +134,26 @@ fn write_job_row(
 /// 自动调整列宽
 fn adjust_column_widths(worksheet: &mut Worksheet) -> Result<(), BossError> {
     // 设置常见列宽
-    worksheet.set_column_width(0, 10)  // 原始行号
+    worksheet
+        .set_column_width(0, 10) // 原始行号
         .map_err(|e| BossError::Excel(format!("设置列宽失败: {}", e)))?;
-    worksheet.set_column_width(1, 50)  // 失败原因
+    worksheet
+        .set_column_width(1, 50) // 失败原因
         .map_err(|e| BossError::Excel(format!("设置列宽失败: {}", e)))?;
-    worksheet.set_column_width(2, 15)  // 招聘类型
+    worksheet
+        .set_column_width(2, 15) // 招聘类型
         .map_err(|e| BossError::Excel(format!("设置列宽失败: {}", e)))?;
-    worksheet.set_column_width(3, 30)  // 职位名称
+    worksheet
+        .set_column_width(3, 30) // 职位名称
         .map_err(|e| BossError::Excel(format!("设置列宽失败: {}", e)))?;
-    worksheet.set_column_width(4, 50)  // 职位描述
+    worksheet
+        .set_column_width(4, 50) // 职位描述
         .map_err(|e| BossError::Excel(format!("设置列宽失败: {}", e)))?;
 
     // 其他列使用默认宽度 12
     for col in 5..21 {
-        worksheet.set_column_width(col, 12)
+        worksheet
+            .set_column_width(col, 12)
             .map_err(|e| BossError::Excel(format!("设置列宽失败: {}", e)))?;
     }
 

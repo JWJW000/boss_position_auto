@@ -113,7 +113,10 @@ impl<'a> Poster<'a> {
             }
 
             if !selected {
-                return Err(BossError::element(format!("未找到经验选项: {}", target_value)));
+                return Err(BossError::element(format!(
+                    "未找到经验选项: {}",
+                    target_value
+                )));
             }
 
             sleep_random_ms(400, 500);
@@ -198,7 +201,10 @@ impl<'a> Poster<'a> {
             }
 
             if !selected {
-                return Err(BossError::element(format!("未找到学历选项: {}", target_value)));
+                return Err(BossError::element(format!(
+                    "未找到学历选项: {}",
+                    target_value
+                )));
             }
 
             sleep_random_ms(400, 500);
@@ -286,7 +292,10 @@ impl<'a> Poster<'a> {
             }
 
             if !selected {
-                return Err(BossError::element(format!("未找到结算方式选项: {}", target_value)));
+                return Err(BossError::element(format!(
+                    "未找到结算方式选项: {}",
+                    target_value
+                )));
             }
 
             sleep_random_ms(400, 500);
@@ -324,7 +333,8 @@ impl<'a> Poster<'a> {
 
             let salary_unit_selectors = vec![
                 "css:.salary-unit-select".to_string(),
-                "xpath://div[contains(@class,'salary-unit')]//div[contains(@class,'ui-select')]".to_string(),
+                "xpath://div[contains(@class,'salary-unit')]//div[contains(@class,'ui-select')]"
+                    .to_string(),
             ];
 
             let salary_unit_select = SelectorMap::find_first(self.page, &salary_unit_selectors);
@@ -430,7 +440,8 @@ impl<'a> Poster<'a> {
         log::info!("  [开始] 填写职位关键词");
 
         // 1. 将关键词按空格或逗号分割
-        let keywords: Vec<&str> = job.关键词
+        let keywords: Vec<&str> = job
+            .关键词
             .split(|c: char| c.is_whitespace() || c == ',' || c == '，')
             .filter(|s| !s.trim().is_empty())
             .collect();

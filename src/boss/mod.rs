@@ -14,10 +14,8 @@ use std::path::PathBuf;
 use crate::error::Result as BResult;
 
 pub(super) const BOSS_LOGIN: &str = "https://www.zhipin.com/web/user/?ka=login";
-pub(super) const BOSS_COOKIE_URLS: [&str; 2] = [
-    "https://www.zhipin.com",
-    "https://www.zhipin.com/web/user/",
-];
+pub(super) const BOSS_COOKIE_URLS: [&str; 2] =
+    ["https://www.zhipin.com", "https://www.zhipin.com/web/user/"];
 pub(super) const BOSS_AUTH_COOKIE_NAMES: [&str; 3] = ["wt2", "zp_at", "zp_token"];
 
 /// Serializable store for the BOSS login cookies saved on disk.

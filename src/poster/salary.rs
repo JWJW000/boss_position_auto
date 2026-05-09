@@ -10,12 +10,12 @@ impl<'a> Poster<'a> {
                 // 实习生薪资填写已在 internship.rs 中的 fill_intern_salary 实现
                 // 这里保留空实现以避免编译错误
                 Ok(())
-            },
+            }
             RecruitmentKind::PartTime => {
                 // 兼职薪资填写已在 parttime.rs 中的 fill_part_time_salary 实现
                 // 这里保留空实现以避免编译错误
                 Ok(())
-            },
+            }
         }
     }
 
@@ -25,11 +25,13 @@ impl<'a> Poster<'a> {
         let high = Self::salary_number(&job.薪资高);
 
         if Self::has_excel_value(&low) {
-            let start = self.page
+            let start = self
+                .page
                 .ele(".margin-r-15 .ui-select-selection")
                 .map_err(BossError::map_element("未找到起始薪资下拉框按钮"))?
                 .ok_or_else(|| BossError::element("下拉框不存在"))?;
-            start.click()
+            start
+                .click()
                 .map_err(BossError::map_element("点击起始薪资下拉框失败"))?;
 
             let items = self.page.eles(".ui-select-item")?;
@@ -43,7 +45,8 @@ impl<'a> Poster<'a> {
         }
 
         if Self::has_excel_value(&high) {
-            let end = self.page
+            let end = self
+                .page
                 .ele(".salary-select .ui-select-selection")
                 .map_err(BossError::map_element("未找到截止薪资下拉框按钮"))?
                 .ok_or_else(|| BossError::element("下拉框不存在"))?;
@@ -116,7 +119,11 @@ impl<'a> Poster<'a> {
             ]);
         }
         if clean.contains("月结") {
-            candidates.extend(["月结".to_string(), "月结（可预支）".to_string(), "月结(可预支)".to_string()]);
+            candidates.extend([
+                "月结".to_string(),
+                "月结（可预支）".to_string(),
+                "月结(可预支)".to_string(),
+            ]);
         }
         if clean.contains("完工") {
             candidates.extend(["完工结".to_string(), "完工结算".to_string()]);

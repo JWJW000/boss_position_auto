@@ -41,15 +41,13 @@ impl BossClient {
         };
 
         if let Some(parent) = self.cookie_path.parent() {
-            fs::create_dir_all(parent)
-                .map_err(BossError::map_config("无法创建配置目录"))?;
+            fs::create_dir_all(parent).map_err(BossError::map_config("无法创建配置目录"))?;
         }
 
         let json = serde_json::to_string_pretty(&store)
             .map_err(BossError::map_config("Cookie序列化失败"))?;
 
-        fs::write(&self.cookie_path, json)
-            .map_err(BossError::map_config("写入Cookie文件失败"))?;
+        fs::write(&self.cookie_path, json).map_err(BossError::map_config("写入Cookie文件失败"))?;
 
         log::info!("Cookie已保存到: {:?}", self.cookie_path);
         Ok(())

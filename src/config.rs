@@ -130,8 +130,8 @@ impl AppConfig {
 
     /// 保存配置到文件
     pub fn save(&self, path: &Path) -> Result<(), ConfigError> {
-        let content = toml::to_string_pretty(self)
-            .map_err(|e| ConfigError::WriteError(e.to_string()))?;
+        let content =
+            toml::to_string_pretty(self).map_err(|e| ConfigError::WriteError(e.to_string()))?;
         fs::write(path, content)?;
         log::info!("配置文件已保存: {:?}", path);
         Ok(())
@@ -154,125 +154,266 @@ impl AppConfig {
             BrowserType::Chromium => detect_chromium_path(),
         }
     }
+
+    /// 获取可尝试启动的浏览器路径列表。配置项优先，随后自动兜底到常见 Chromium 内核浏览器。
+    pub fn get_browser_path_candidates(&self) -> Vec<String> {
+        let mut candidates = Vec::new();
+
+        match &self.browser.browser_type {
+            BrowserType::Custom => {
+                if let Some(path) = &self.browser.custom_path {
+                    push_unique(&mut candidates, path.clone());
+                }
+            }
+            BrowserType::Chrome => extend_detected(&mut candidates, detect_chrome_paths()),
+            BrowserType::Edge => extend_detected(&mut candidates, detect_edge_paths()),
+            BrowserType::Chromium => extend_detected(&mut candidates, detect_chromium_paths()),
+        }
+
+        extend_detected(&mut candidates, detect_chrome_paths());
+        extend_detected(&mut candidates, detect_edge_paths());
+        extend_detected(&mut candidates, detect_chromium_paths());
+        extend_detected(&mut candidates, detect_brave_paths());
+
+        candidates
+    }
+}
+
+fn push_unique(candidates: &mut Vec<String>, path: String) {
+    if !path.trim().is_empty() && !candidates.iter().any(|item| item == &path) {
+        candidates.push(path);
+    }
+}
+
+fn push_existing(candidates: &mut Vec<String>, path: impl Into<PathBuf>) {
+    let path = path.into();
+    if path.exists() {
+        push_unique(candidates, path.to_string_lossy().to_string());
+    }
+}
+
+fn extend_detected(candidates: &mut Vec<String>, paths: Vec<String>) {
+    for path in paths {
+        push_unique(candidates, path);
+    }
 }
 
 /// 检测 Chrome 浏览器路径
 fn detect_chrome_path() -> Option<String> {
+    detect_chrome_paths().into_iter().next()
+}
+
+fn detect_chrome_paths() -> Vec<String> {
+    let mut candidates = Vec::new();
+
     #[cfg(target_os = "windows")]
     {
-        let paths = vec![
+        push_existing(
+            &mut candidates,
             r"C:\Program Files\Google\Chrome\Application\chrome.exe",
+        );
+        push_existing(
+            &mut candidates,
             r"C:\Program Files (x86)\Google\Chrome\Application\chrome.exe",
-        ];
-
-        for path in paths {
-            if Path::new(path).exists() {
-                return Some(path.to_string());
-            }
+        );
+        if let Some(local_app_data) = std::env::var_os("LOCALAPPDATA") {
+            push_existing(
+                &mut candidates,
+                PathBuf::from(local_app_data)
+                    .join("Google")
+                    .join("Chrome")
+                    .join("Application")
+                    .join("chrome.exe"),
+            );
         }
 
         // 尝试从注册表读取
         if let Ok(chrome_path) = read_chrome_path_from_registry() {
-            return Some(chrome_path);
+            push_existing(&mut candidates, chrome_path);
         }
+
+        push_path_exe(&mut candidates, "chrome.exe");
     }
 
     #[cfg(target_os = "macos")]
     {
         let path = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
-        if Path::new(path).exists() {
-            return Some(path.to_string());
-        }
+        push_existing(&mut candidates, path);
     }
 
     #[cfg(target_os = "linux")]
     {
-        let paths = vec![
+        for path in [
             "/usr/bin/google-chrome",
             "/usr/bin/google-chrome-stable",
             "/usr/bin/chromium",
             "/usr/bin/chromium-browser",
-        ];
-
-        for path in paths {
-            if Path::new(path).exists() {
-                return Some(path.to_string());
-            }
+        ] {
+            push_existing(&mut candidates, path);
         }
+        push_path_exe(&mut candidates, "google-chrome");
+        push_path_exe(&mut candidates, "google-chrome-stable");
     }
 
-    None
+    candidates
 }
 
 /// 检测 Edge 浏览器路径
 fn detect_edge_path() -> Option<String> {
+    detect_edge_paths().into_iter().next()
+}
+
+fn detect_edge_paths() -> Vec<String> {
+    let mut candidates = Vec::new();
+
     #[cfg(target_os = "windows")]
     {
-        let paths = vec![
-            r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe",
+        push_existing(
+            &mut candidates,
             r"C:\Program Files\Microsoft\Edge\Application\msedge.exe",
-        ];
-
-        for path in paths {
-            if Path::new(path).exists() {
-                return Some(path.to_string());
-            }
+        );
+        push_existing(
+            &mut candidates,
+            r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe",
+        );
+        if let Some(local_app_data) = std::env::var_os("LOCALAPPDATA") {
+            push_existing(
+                &mut candidates,
+                PathBuf::from(local_app_data)
+                    .join("Microsoft")
+                    .join("Edge")
+                    .join("Application")
+                    .join("msedge.exe"),
+            );
         }
+        if let Ok(edge_path) = read_app_path_from_registry("msedge.exe") {
+            push_existing(&mut candidates, edge_path);
+        }
+        push_path_exe(&mut candidates, "msedge.exe");
     }
 
     #[cfg(target_os = "macos")]
     {
         let path = "/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge";
-        if Path::new(path).exists() {
-            return Some(path.to_string());
-        }
-    }
-
-    None
-}
-
-/// 检测 Chromium 浏览器路径
-fn detect_chromium_path() -> Option<String> {
-    #[cfg(target_os = "windows")]
-    {
-        let paths = vec![
-            r"C:\Program Files\Chromium\Application\chrome.exe",
-            r"C:\Program Files (x86)\Chromium\Application\chrome.exe",
-        ];
-
-        for path in paths {
-            if Path::new(path).exists() {
-                return Some(path.to_string());
-            }
-        }
+        push_existing(&mut candidates, path);
     }
 
     #[cfg(target_os = "linux")]
     {
-        let paths = vec![
-            "/usr/bin/chromium",
-            "/usr/bin/chromium-browser",
-        ];
-
-        for path in paths {
-            if Path::new(path).exists() {
-                return Some(path.to_string());
-            }
-        }
+        push_existing(&mut candidates, "/usr/bin/microsoft-edge");
+        push_existing(&mut candidates, "/usr/bin/microsoft-edge-stable");
+        push_path_exe(&mut candidates, "microsoft-edge");
+        push_path_exe(&mut candidates, "microsoft-edge-stable");
     }
 
-    None
+    candidates
+}
+
+/// 检测 Chromium 浏览器路径
+fn detect_chromium_path() -> Option<String> {
+    detect_chromium_paths().into_iter().next()
+}
+
+fn detect_chromium_paths() -> Vec<String> {
+    let mut candidates = Vec::new();
+
+    #[cfg(target_os = "windows")]
+    {
+        push_existing(
+            &mut candidates,
+            r"C:\Program Files\Chromium\Application\chrome.exe",
+        );
+        push_existing(
+            &mut candidates,
+            r"C:\Program Files (x86)\Chromium\Application\chrome.exe",
+        );
+        push_path_exe(&mut candidates, "chromium.exe");
+    }
+
+    #[cfg(target_os = "linux")]
+    {
+        push_existing(&mut candidates, "/usr/bin/chromium");
+        push_existing(&mut candidates, "/usr/bin/chromium-browser");
+        push_path_exe(&mut candidates, "chromium");
+        push_path_exe(&mut candidates, "chromium-browser");
+    }
+
+    candidates
+}
+
+fn detect_brave_paths() -> Vec<String> {
+    let mut candidates = Vec::new();
+
+    #[cfg(target_os = "windows")]
+    {
+        push_existing(
+            &mut candidates,
+            r"C:\Program Files\BraveSoftware\Brave-Browser\Application\brave.exe",
+        );
+        push_existing(
+            &mut candidates,
+            r"C:\Program Files (x86)\BraveSoftware\Brave-Browser\Application\brave.exe",
+        );
+        if let Some(local_app_data) = std::env::var_os("LOCALAPPDATA") {
+            push_existing(
+                &mut candidates,
+                PathBuf::from(local_app_data)
+                    .join("BraveSoftware")
+                    .join("Brave-Browser")
+                    .join("Application")
+                    .join("brave.exe"),
+            );
+        }
+        push_path_exe(&mut candidates, "brave.exe");
+    }
+
+    #[cfg(target_os = "macos")]
+    {
+        push_existing(
+            &mut candidates,
+            "/Applications/Brave Browser.app/Contents/MacOS/Brave Browser",
+        );
+    }
+
+    #[cfg(target_os = "linux")]
+    {
+        push_existing(&mut candidates, "/usr/bin/brave-browser");
+        push_path_exe(&mut candidates, "brave-browser");
+    }
+
+    candidates
+}
+
+fn push_path_exe(candidates: &mut Vec<String>, exe_name: &str) {
+    if let Some(path_var) = std::env::var_os("PATH") {
+        for dir in std::env::split_paths(&path_var) {
+            push_existing(candidates, dir.join(exe_name));
+        }
+    }
 }
 
 #[cfg(target_os = "windows")]
 fn read_chrome_path_from_registry() -> Result<String, Box<dyn std::error::Error>> {
+    read_app_path_from_registry("chrome.exe")
+}
+
+#[cfg(target_os = "windows")]
+fn read_app_path_from_registry(exe_name: &str) -> Result<String, Box<dyn std::error::Error>> {
     use winreg::enums::*;
     use winreg::RegKey;
 
-    let hklm = RegKey::predef(HKEY_LOCAL_MACHINE);
-    let chrome_key = hklm.open_subkey(r"SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\chrome.exe")?;
-    let path: String = chrome_key.get_value("")?;
-    Ok(path)
+    let key_path = format!(
+        r"SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\{}",
+        exe_name
+    );
+    for root in [HKEY_CURRENT_USER, HKEY_LOCAL_MACHINE] {
+        let key = RegKey::predef(root);
+        if let Ok(app_key) = key.open_subkey(&key_path) {
+            let path: String = app_key.get_value("")?;
+            return Ok(path);
+        }
+    }
+    Err(format!("未在注册表 App Paths 中找到 {}", exe_name).into())
 }
 
 #[cfg(test)]

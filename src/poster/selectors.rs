@@ -114,13 +114,11 @@ impl SelectorMap {
     pub fn save(&self) -> BResult<()> {
         let path = Self::path();
         if let Some(parent) = path.parent() {
-            fs::create_dir_all(parent)
-                .map_err(BossError::map_config("创建配置目录失败"))?;
+            fs::create_dir_all(parent).map_err(BossError::map_config("创建配置目录失败"))?;
         }
         let json = serde_json::to_string_pretty(self)
             .map_err(BossError::map_config("序列化选择器失败"))?;
-        fs::write(&path, json)
-            .map_err(BossError::map_config("写入选择器失败"))?;
+        fs::write(&path, json).map_err(BossError::map_config("写入选择器失败"))?;
         log::info!("选择器已保存到: {:?}", path);
         Ok(())
     }
@@ -135,7 +133,10 @@ impl SelectorMap {
 
     /// 尝试用多个选择器找元素，返回第一个成功的
     /// Return the first DOM element found by any selector in the provided list.
-    pub(super) fn find_first(page: &ChromiumPage, selectors: &[String]) -> Option<rust_drission::Element> {
+    pub(super) fn find_first(
+        page: &ChromiumPage,
+        selectors: &[String],
+    ) -> Option<rust_drission::Element> {
         log::debug!("开始尝试 {} 个选择器定位元素", selectors.len());
 
         for (index, sel) in selectors.iter().enumerate() {
@@ -148,9 +149,11 @@ impl SelectorMap {
                 }
                 Ok(None) => {
                     log::warn!("  [✗ 未找到] 选择器未匹配到元素: {}", sel);
-                    log::warn!("    → 可在浏览器控制台测试: document.querySelector('{}') 或 $x('{}')",
+                    log::warn!(
+                        "    → 可在浏览器控制台测试: document.querySelector('{}') 或 $x('{}')",
                         sel.trim_start_matches("css:"),
-                        sel.trim_start_matches("xpath:"));
+                        sel.trim_start_matches("xpath:")
+                    );
                 }
                 Err(e) => {
                     log::error!("  [✗ 错误] 选择器执行失败: {} | 错误: {:?}", sel, e);
@@ -168,4 +171,3 @@ impl SelectorMap {
         None
     }
 }
-

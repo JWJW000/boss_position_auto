@@ -1,4 +1,4 @@
-﻿use super::*;
+use super::*;
 
 impl<'a> Poster<'a> {
     /// Bring the publishing tab to the foreground before page operations.
@@ -16,7 +16,10 @@ impl<'a> Poster<'a> {
     }
 
     /// Return visible dropdown options, falling back to all options for debugging.
-    pub(super) fn wait_visible_dropdown_items(&mut self, timeout_ms: u64) -> Vec<rust_drission::Element> {
+    pub(super) fn wait_visible_dropdown_items(
+        &mut self,
+        timeout_ms: u64,
+    ) -> Vec<rust_drission::Element> {
         let selector = "xpath://div[contains(@class,'ui-select-dropdown') and not(contains(@style,'display: none'))]//li[contains(@class,'ui-select-item')]";
         log::debug!("等待下拉选项出现 (超时: {}ms)", timeout_ms);
         log::debug!("  选择器: {}", selector);
@@ -29,7 +32,11 @@ impl<'a> Poster<'a> {
             match self.page.eles(selector) {
                 Ok(items) => {
                     if !items.is_empty() {
-                        log::info!("  [✓ 成功] 找到 {} 个下拉选项 (尝试 {} 次)", items.len(), attempt);
+                        log::info!(
+                            "  [✓ 成功] 找到 {} 个下拉选项 (尝试 {} 次)",
+                            items.len(),
+                            attempt
+                        );
                         return items;
                     }
                     log::trace!("  [尝试 {}] 下拉选项未出现，继续等待...", attempt);
@@ -51,9 +58,15 @@ impl<'a> Poster<'a> {
                     log::error!("  [✗ 失败] 备用选择器也未找到任何下拉选项");
                     log::error!("    → 可在浏览器控制台测试:");
                     log::error!("       $x(\"{}\")", selector.trim_start_matches("xpath:"));
-                    log::error!("       $x(\"{}\")", fallback_selector.trim_start_matches("xpath:"));
+                    log::error!(
+                        "       $x(\"{}\")",
+                        fallback_selector.trim_start_matches("xpath:")
+                    );
                 } else {
-                    log::warn!("  [部分成功] 备用选择器找到 {} 个选项（可能包含隐藏项）", items.len());
+                    log::warn!(
+                        "  [部分成功] 备用选择器找到 {} 个选项（可能包含隐藏项）",
+                        items.len()
+                    );
                 }
                 items
             }
@@ -122,11 +135,19 @@ impl<'a> Poster<'a> {
     }
 
     /// Open a dropdown inside the form row whose title contains `row_label`.
-    pub(super) fn click_row_select_by_label(&mut self, row_label: &str, index: usize) -> BResult<bool> {
-        log::debug!("尝试点击表单行下拉框: 行标题=\"{}\", 索引={}", row_label, index);
+    pub(super) fn click_row_select_by_label(
+        &mut self,
+        row_label: &str,
+        index: usize,
+    ) -> BResult<bool> {
+        log::debug!(
+            "尝试点击表单行下拉框: 行标题=\"{}\", 索引={}",
+            row_label,
+            index
+        );
 
-        let label_json = serde_json::to_string(row_label)
-            .map_err(BossError::map_config("行标题序列化失败"))?;
+        let label_json =
+            serde_json::to_string(row_label).map_err(BossError::map_config("行标题序列化失败"))?;
         let js = format!(
             r#"
             (() => {{
@@ -187,19 +208,31 @@ impl<'a> Poster<'a> {
             Ok(v) => {
                 let success = v.get("value").and_then(|x| x.as_bool()).unwrap_or(false);
                 if success {
-                    log::info!("  [✓ 成功] 已点击表单行 \"{}\" 的第 {} 个下拉框", row_label, index + 1);
+                    log::info!(
+                        "  [✓ 成功] 已点击表单行 \"{}\" 的第 {} 个下拉框",
+                        row_label,
+                        index + 1
+                    );
                 } else {
                     log::error!("  [✗ 失败] JavaScript 返回 false，未找到或点击失败");
                     log::error!("    → 可在浏览器控制台执行以下代码调试:");
-                    log::error!("    {}", js.lines().map(|l| l.trim()).collect::<Vec<_>>().join(" "));
+                    log::error!(
+                        "    {}",
+                        js.lines().map(|l| l.trim()).collect::<Vec<_>>().join(" ")
+                    );
                 }
                 Ok(success)
             }
             Err(e) => {
                 log::error!("  [✗ 失败] JavaScript 执行失败: {:?}", e);
                 log::error!("    → 可在浏览器控制台执行以下代码调试:");
-                log::error!("    {}", js.lines().map(|l| l.trim()).collect::<Vec<_>>().join(" "));
-                Err(BossError::map_cdp(format!("点击{}下拉失败", row_label))(e))
+                log::error!(
+                    "    {}",
+                    js.lines().map(|l| l.trim()).collect::<Vec<_>>().join(" ")
+                );
+                Err(BossError::map_cdp(format!("点击{}下拉失败", row_label))(
+                    e,
+                ))
             }
         }
     }
@@ -222,6 +255,4 @@ impl<'a> Poster<'a> {
             }
         }
     }
-
 }
-

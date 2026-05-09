@@ -9,10 +9,11 @@ impl<'a> Poster<'a> {
 
         // 等待表单加载（等待职位名称输入框出现）
         log::info!("等待表单加载...");
-        sleep_random_ms(1500, 2000);  // 增加初始等待时间
+        sleep_random_ms(1500, 2000); // 增加初始等待时间
 
         let mut form_loaded = false;
-        for attempt in 0..30 {  // 增加重试次数到30次
+        for attempt in 0..30 {
+            // 增加重试次数到30次
             if let Ok(Some(_)) = self.page.ele("css:input[name='jobName']") {
                 log::info!("表单已加载");
                 form_loaded = true;
@@ -48,9 +49,7 @@ impl<'a> Poster<'a> {
     pub(super) fn navigate_to_publish_page(&mut self) -> BResult<()> {
         self.activate_current_tab()?;
 
-        let publish_urls = [
-            "https://www.zhipin.com/web/chat/job/edit?encryptId=0&enterSource=2"
-        ];
+        let publish_urls = ["https://www.zhipin.com/web/chat/job/edit?encryptId=0&enterSource=2"];
 
         for url in &publish_urls {
             log::info!("尝试访问: {}", url);
@@ -69,7 +68,8 @@ impl<'a> Poster<'a> {
 
         // 从BOSS首页尝试导航
         log::info!("从BOSS首页尝试导航...");
-        self.page.get("https://www.zhipin.com")
+        self.page
+            .get("https://www.zhipin.com")
             .map_err(BossError::map_cdp("访问BOSS首页失败"))?;
         sleep_random_ms(1200, 1800);
 
@@ -92,6 +92,4 @@ impl<'a> Poster<'a> {
 
         Ok(())
     }
-
 }
-

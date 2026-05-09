@@ -6,9 +6,14 @@
 //!   boss_auto --dry-run              # 只读Excel不发布
 //!   boss_auto --relogin              # 强制重新扫码
 
-use boss_auto::{BossClient, ExcelReader, JobRecord, Poster, FailedJob, export_failed_jobs};
+use boss_auto::{
+    export_failed_jobs, utils::sleep_random_ms, BossClient, ExcelReader, FailedJob, JobRecord,
+    Poster,
+};
 use log::{error, info, LevelFilter};
-use simplelog::{ColorChoice, CombinedLogger, ConfigBuilder, SharedLogger, TermLogger, TerminalMode, WriteLogger};
+use simplelog::{
+    ColorChoice, CombinedLogger, ConfigBuilder, SharedLogger, TermLogger, TerminalMode, WriteLogger,
+};
 use std::fs;
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
@@ -50,9 +55,8 @@ fn setup_logging() {
         .open(&log_file)
         .unwrap_or_else(|e| panic!("无法打开日志文件 {:?}: {}", log_file, e));
 
-    let mut loggers: Vec<Box<dyn SharedLogger>> = vec![
-        WriteLogger::new(LevelFilter::Info, config.clone(), file),
-    ];
+    let mut loggers: Vec<Box<dyn SharedLogger>> =
+        vec![WriteLogger::new(LevelFilter::Info, config.clone(), file)];
     let term = TermLogger::new(
         LevelFilter::Info,
         config,
@@ -102,7 +106,7 @@ fn run() -> ExitCode {
                 error!("未找到Excel文件，请使用 --excel 指定路径");
                 return ExitCode::from(1);
             }
-        }
+        },
     };
 
     info!("使用的Excel: {:?}", excel_path);
@@ -168,6 +172,10 @@ fn run() -> ExitCode {
             Ok(url) => {
                 success += 1;
                 info!("[成功] {} -> {}", job.职位名称, url);
+                if index + 1 < jobs.len() {
+                    info!("发布成功，等待 25-40 秒后继续下一个岗位...");
+                    sleep_random_ms(25_00, 40_00);
+                }
             }
             Err(e) => {
                 failed += 1;

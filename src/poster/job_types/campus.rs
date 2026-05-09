@@ -28,8 +28,8 @@ impl<'a> Poster<'a> {
 
         // ==================== 第五步：工作地址 ====================
         log::info!("  [步骤5] 填写工作地址");
-        self.fill_city()?;
-        
+        self.fill_city(job)?;
+
         // ==================== 第六步：毕业时间 ====================
         log::info!("  [步骤6] 填写毕业时间");
         self.fill_campus_graduate_time(job)?;
@@ -91,8 +91,8 @@ impl<'a> Poster<'a> {
                     .element(".ui-select-inner")
                     .map_err(BossError::map_element("未找到经验下拉框"))?;
 
-                let select_inner = select_inner
-                    .ok_or_else(|| BossError::element("经验下拉框为空"))?;
+                let select_inner =
+                    select_inner.ok_or_else(|| BossError::element("经验下拉框为空"))?;
 
                 select_inner
                     .click()
@@ -135,8 +135,11 @@ impl<'a> Poster<'a> {
             }
         }
 
-        Err(BossError::element(format!("未找到经验选项: {}", target_value)))
-}
+        Err(BossError::element(format!(
+            "未找到经验选项: {}",
+            target_value
+        )))
+    }
 
     /// 应届生校园招聘 - 填写学历要求
     fn fill_campus_education(&mut self, job: &JobRecord) -> BResult<()> {
@@ -187,8 +190,8 @@ impl<'a> Poster<'a> {
                     .element(".ui-select-inner")
                     .map_err(BossError::map_element("未找到学历下拉框"))?;
 
-                let select_inner = select_inner
-                    .ok_or_else(|| BossError::element("学历下拉框为空"))?;
+                let select_inner =
+                    select_inner.ok_or_else(|| BossError::element("学历下拉框为空"))?;
 
                 select_inner
                     .click()
@@ -231,8 +234,11 @@ impl<'a> Poster<'a> {
             }
         }
 
-        Err(BossError::element(format!("未找到学历选项: {}", target_value)))
-}
+        Err(BossError::element(format!(
+            "未找到学历选项: {}",
+            target_value
+        )))
+    }
 
     /// 应届生校园招聘 - 填写薪资范围
     fn fill_campus_salary(&mut self, job: &JobRecord) -> BResult<()> {
@@ -432,7 +438,7 @@ impl<'a> Poster<'a> {
 
         sleep_random_ms(400, 500);
         Ok(())
-}
+    }
 
     /// 应届生校园招聘 - 填写职位关键词
     fn fill_campus_tags(&mut self, job: &JobRecord) -> BResult<()> {
@@ -445,7 +451,8 @@ impl<'a> Poster<'a> {
         log::info!("  [开始] 填写职位关键词");
 
         // 1. 将关键词按空格或逗号分割
-        let keywords: Vec<&str> = job.关键词
+        let keywords: Vec<&str> = job
+            .关键词
             .split(|c: char| c.is_whitespace() || c == ',' || c == '，')
             .filter(|s| !s.trim().is_empty())
             .collect();
@@ -660,8 +667,11 @@ impl<'a> Poster<'a> {
             }
         }
 
-        Err(BossError::element(format!("未找到目标毕业年份: {}", target_year)))
-}
+        Err(BossError::element(format!(
+            "未找到目标毕业年份: {}",
+            target_year
+        )))
+    }
 
     /// 应届生校园招聘 - 填写招聘截止时间
     fn fill_campus_deadline(&mut self, job: &JobRecord) -> BResult<()> {

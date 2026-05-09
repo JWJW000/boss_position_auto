@@ -42,5 +42,4 @@ impl<'a> Poster<'a> {
         log::info!("  [√] 职位描述已填写 ({}字符)", job.职位描述.len());
         Ok(())
     }
-
 }

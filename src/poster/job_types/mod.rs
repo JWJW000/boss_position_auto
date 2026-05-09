@@ -4,7 +4,7 @@
 // 重新导出父模块的所有类型，让子模块可以使用
 use super::*;
 
-mod fulltime;      // 社招全职
-mod campus;        // 应届生校园招聘
-mod internship;    // 实习生招聘
-mod parttime;      // 兼职招聘
+mod campus; // 应届生校园招聘
+mod fulltime; // 社招全职
+mod internship; // 实习生招聘
+mod parttime; // 兼职招聘

@@ -2,9 +2,13 @@ use super::*;
 
 impl<'a> Poster<'a> {
     /// Fallback open: click placeholder parent, like `document.querySelectorAll('.ui-select-placeholder')[i].parentElement.click()`.
-    pub(super) fn click_select_by_placeholder_hint(&mut self, hint: &str, index: usize) -> BResult<bool> {
-        let hint_json = serde_json::to_string(hint)
-            .map_err(BossError::map_config("占位提示序列化失败"))?;
+    pub(super) fn click_select_by_placeholder_hint(
+        &mut self,
+        hint: &str,
+        index: usize,
+    ) -> BResult<bool> {
+        let hint_json =
+            serde_json::to_string(hint).map_err(BossError::map_config("占位提示序列化失败"))?;
         let js = format!(
             r#"
             (() => {{
@@ -36,8 +40,8 @@ impl<'a> Poster<'a> {
 
     /// Prefer selecting from the currently opened dropdown via JS to avoid clicking hidden options.
     pub(super) fn choose_open_dropdown_option_js(&mut self, value: &str) -> BResult<bool> {
-        let value_json = serde_json::to_string(value)
-            .map_err(BossError::map_config("下拉选项序列化失败"))?;
+        let value_json =
+            serde_json::to_string(value).map_err(BossError::map_config("下拉选项序列化失败"))?;
         let js = format!(
             r#"
             (() => {{
@@ -90,8 +94,8 @@ impl<'a> Poster<'a> {
 
     /// Fallback option clicker for pages where list items are not `.ui-select-item`.
     pub(super) fn click_any_visible_option_by_text_js(&mut self, value: &str) -> BResult<bool> {
-        let value_json = serde_json::to_string(value)
-            .map_err(BossError::map_config("通用选项序列化失败"))?;
+        let value_json =
+            serde_json::to_string(value).map_err(BossError::map_config("通用选项序列化失败"))?;
         let js = format!(
             r#"
             (() => {{

@@ -42,12 +42,26 @@ impl ColIdx {
 
         let salary_low_idx = required_any(
             &idx,
-            &["薪资下限", "薪资最低", "最低薪资", "最低月薪", "最低日薪", "薪资范围"],
+            &[
+                "薪资下限",
+                "薪资最低",
+                "最低薪资",
+                "最低月薪",
+                "最低日薪",
+                "薪资范围",
+            ],
             "薪资下限/薪资范围",
         )?;
         let salary_high_idx = find_any(
             &idx,
-            &["薪资上限", "薪资最高", "最高薪资", "最高月薪", "最高日薪", "薪资范围.1"],
+            &[
+                "薪资上限",
+                "薪资最高",
+                "最高薪资",
+                "最高月薪",
+                "最高日薪",
+                "薪资范围.1",
+            ],
         )
         .unwrap_or(salary_low_idx);
         let city_idx = idx
@@ -67,19 +81,34 @@ impl ColIdx {
             是否急招: idx.get("是否急招").copied(),
             是否驻外: idx.get("是否驻外").copied(),
             职位类型: get!("职位类型"),
-            经验: idx.get("经验").copied().or_else(|| idx.get("工作经验").copied()),
+            经验: idx
+                .get("经验")
+                .copied()
+                .or_else(|| idx.get("工作经验").copied()),
             城市: city_idx,
             学历: get!("学历"),
             薪资低: salary_low_idx,
             薪资高: salary_high_idx,
-            薪资备注: idx.get("薪资备注").copied().or_else(|| idx.get("薪资范围.2").copied()),
+            薪资备注: idx
+                .get("薪资备注")
+                .copied()
+                .or_else(|| idx.get("薪资范围.2").copied()),
             薪资单位: find_any(&idx, &["薪资单位", "计薪单位", "薪资类型"]),
             结算方式: find_any(&idx, &["结算方式", "兼职结算方式"]),
             关键词: get!("职位关键词"),
             届别: graduate_idx,
-            最少实习月数: idx.get("最少实习月数").copied().or_else(|| idx.get("实习时长").copied()),
-            最少周到岗天数: idx.get("最少周到岗天数").copied().or_else(|| idx.get("其他说明").copied()),
-            截止日期: idx.get("招聘截止").copied().or_else(|| idx.get("招聘截止时间").copied()),
+            最少实习月数: idx
+                .get("最少实习月数")
+                .copied()
+                .or_else(|| idx.get("实习时长").copied()),
+            最少周到岗天数: idx
+                .get("最少周到岗天数")
+                .copied()
+                .or_else(|| idx.get("其他说明").copied()),
+            截止日期: idx
+                .get("招聘截止")
+                .copied()
+                .or_else(|| idx.get("招聘截止时间").copied()),
         })
     }
 }

@@ -8,13 +8,12 @@
 
 pub mod boss;
 pub mod config;
-pub mod excel;
 pub mod error;
+pub mod excel;
 pub mod poster;
 pub mod utils;
 
-
 pub use boss::BossClient;
 pub use config::AppConfig;
-pub use excel::{ExcelReader, JobRecord, FailedJob, export_failed_jobs};
+pub use excel::{export_failed_jobs, ExcelReader, FailedJob, JobRecord};
 pub use poster::Poster;

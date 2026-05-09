@@ -28,7 +28,7 @@ impl<'a> Poster<'a> {
 
         // ==================== 第五步：工作地址 ====================
         log::info!("  [步骤5] 填写工作地址");
-        self.fill_city()?;
+        self.fill_city(job)?;
 
         // ==================== 第六步：实习月数 ====================
         log::info!("  [步骤6] 填写实习月数");
@@ -93,8 +93,8 @@ impl<'a> Poster<'a> {
                     .element(".ui-select-inner")
                     .map_err(BossError::map_element("未找到经验下拉框"))?;
 
-                let select_inner = select_inner
-                    .ok_or_else(|| BossError::element("经验下拉框为空"))?;
+                let select_inner =
+                    select_inner.ok_or_else(|| BossError::element("经验下拉框为空"))?;
 
                 select_inner
                     .click()
@@ -137,7 +137,10 @@ impl<'a> Poster<'a> {
             }
         }
 
-        Err(BossError::element(format!("未找到经验选项: {}", target_value)))
+        Err(BossError::element(format!(
+            "未找到经验选项: {}",
+            target_value
+        )))
     }
 
     fn fill_intern_education(&mut self, job: &JobRecord) -> BResult<()> {
@@ -190,8 +193,8 @@ impl<'a> Poster<'a> {
                     .element(".ui-select-inner")
                     .map_err(BossError::map_element("未找到学历下拉框"))?;
 
-                let select_inner = select_inner
-                    .ok_or_else(|| BossError::element("学历下拉框为空"))?;
+                let select_inner =
+                    select_inner.ok_or_else(|| BossError::element("学历下拉框为空"))?;
 
                 select_inner
                     .click()
@@ -234,7 +237,10 @@ impl<'a> Poster<'a> {
             }
         }
 
-        Err(BossError::element(format!("未找到学历选项: {}", target_value)))
+        Err(BossError::element(format!(
+            "未找到学历选项: {}",
+            target_value
+        )))
     }
 
     fn fill_intern_salary(&mut self, job: &JobRecord, _kind: RecruitmentKind) -> BResult<()> {
@@ -406,7 +412,8 @@ impl<'a> Poster<'a> {
 
         log::info!("  [开始] 填写职位关键词");
 
-        let keywords: Vec<&str> = job.关键词
+        let keywords: Vec<&str> = job
+            .关键词
             .split(|c: char| c.is_whitespace() || c == ',' || c == '，' || c == ';' || c == '；')
             .filter(|s| !s.trim().is_empty() && s.trim() != "无")
             .collect();
@@ -459,7 +466,10 @@ impl<'a> Poster<'a> {
                     sleep_random_ms(400, 600);
                 }
 
-                log::info!("  [√] 职位关键词: 已通过直接输入方式填写 {} 个", keywords.len());
+                log::info!(
+                    "  [√] 职位关键词: 已通过直接输入方式填写 {} 个",
+                    keywords.len()
+                );
                 return Ok(());
             }
         }
@@ -568,11 +578,14 @@ impl<'a> Poster<'a> {
             }
         }
 
-        let row = target_row.ok_or_else(|| BossError::element("intern requirement row not found"))?;
+        let row =
+            target_row.ok_or_else(|| BossError::element("intern requirement row not found"))?;
 
         let selects = row
             .elements(".ui-select-selection")
-            .map_err(BossError::map_element("intern requirement selects not found"))?;
+            .map_err(BossError::map_element(
+                "intern requirement selects not found",
+            ))?;
 
         let month_select = if let Some(select) = selects.get(0) {
             select
@@ -592,7 +605,8 @@ impl<'a> Poster<'a> {
         for item in items {
             let text = item.text()?;
             if text.trim() == target_text {
-                item.click().map_err(BossError::map_element("click month option failed"))?;
+                item.click()
+                    .map_err(BossError::map_element("click month option failed"))?;
                 selected = true;
                 log::info!("selected intern months: {}", target_text);
                 break;
@@ -600,7 +614,10 @@ impl<'a> Poster<'a> {
         }
 
         if !selected {
-            return Err(BossError::element(format!("month option not found: {}", target_text)));
+            return Err(BossError::element(format!(
+                "month option not found: {}",
+                target_text
+            )));
         }
 
         sleep_random_ms(400, 500);
@@ -652,11 +669,14 @@ impl<'a> Poster<'a> {
             }
         }
 
-        let row = target_row.ok_or_else(|| BossError::element("intern requirement row not found"))?;
+        let row =
+            target_row.ok_or_else(|| BossError::element("intern requirement row not found"))?;
 
         let selects = row
             .elements(".ui-select-selection")
-            .map_err(BossError::map_element("intern requirement selects not found"))?;
+            .map_err(BossError::map_element(
+                "intern requirement selects not found",
+            ))?;
 
         // “实习要求”通常有两个下拉：第一个是实习月数，第二个是周到岗天数。
         let days_select = if let Some(select) = selects.get(1) {
@@ -679,7 +699,8 @@ impl<'a> Poster<'a> {
         for item in items {
             let text = item.text()?;
             if text.trim() == target_text {
-                item.click().map_err(BossError::map_element("click days option failed"))?;
+                item.click()
+                    .map_err(BossError::map_element("click days option failed"))?;
                 selected = true;
                 log::info!("selected intern days: {}", target_text);
                 break;
@@ -687,11 +708,13 @@ impl<'a> Poster<'a> {
         }
 
         if !selected {
-            return Err(BossError::element(format!("days option not found: {}", target_text)));
+            return Err(BossError::element(format!(
+                "days option not found: {}",
+                target_text
+            )));
         }
 
         sleep_random_ms(400, 500);
         Ok(())
     }
-
 }

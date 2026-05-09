@@ -32,7 +32,10 @@ impl<'a> Poster<'a> {
 
         // 弹窗打开后，再尝试一次直接输入。部分页面点击入口后出现的是输入框，不是 .question-item。
         if self.try_fill_tags_by_direct_input(&tags)? {
-            log::info!("  [√] 职位关键词: 已通过弹出输入框方式填写 {} 个", tags.len());
+            log::info!(
+                "  [√] 职位关键词: 已通过弹出输入框方式填写 {} 个",
+                tags.len()
+            );
             self.try_click_tag_final_confirm()?;
             return Ok(());
         }
@@ -315,13 +318,11 @@ impl<'a> Poster<'a> {
 
     /// Split the Excel keyword cell into clean single tags.
     fn split_tag_items(raw: &str) -> Vec<String> {
-        raw.split(|c: char| {
-            c == ',' || c == '，' || c == ';' || c == '；' || c.is_whitespace()
-        })
-        .map(str::trim)
-        .filter(|s| !s.is_empty() && *s != "无")
-        .map(ToOwned::to_owned)
-        .collect()
+        raw.split(|c: char| c == ',' || c == '，' || c == ';' || c == '；' || c.is_whitespace())
+            .map(str::trim)
+            .filter(|s| !s.is_empty() && *s != "无")
+            .map(ToOwned::to_owned)
+            .collect()
     }
 
     /// Open the second-level custom keyword dialog from the preference area.
