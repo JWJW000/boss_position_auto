@@ -12,6 +12,18 @@ impl<'a> Poster<'a> {
 
         let selectors = [
             "css:input[name='jobCategory']",
+            "css:.publish-component input[name='jobCategory']",
+            "css:.form-row input[name='jobCategory']",
+            "css:.publish-edit-form-row input[name='jobCategory']",
+            "css:.publish-component input[placeholder*='职位类型']",
+            "css:.form-row input[placeholder*='职位类型']",
+            "css:.publish-edit-form-row input[placeholder*='职位类型']",
+            "css:.publish-component input[placeholder*='选择职位类型']",
+            "css:.form-row input[placeholder*='选择职位类型']",
+            "css:.publish-edit-form-row input[placeholder*='选择职位类型']",
+            "css:.publish-component .job-category-container .ipt-wrap input",
+            "css:.form-row .job-category-container .ipt-wrap input",
+            "css:.publish-edit-form-row .job-category-container .ipt-wrap input",
             "css:.job-category-container input[name='jobCategory']",
             "css:.job-category-container input[placeholder*='职位类型']",
             "css:.job-category-container input[placeholder*='选择职位类型']",

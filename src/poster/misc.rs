@@ -80,6 +80,9 @@ impl<'a> Poster<'a> {
 
     fn is_publish_success_url(url: &str) -> bool {
         let u = url.to_ascii_lowercase();
+        if u.contains("/job/edit") {
+            return false;
+        }
         u.contains("success")
             || u.contains("published")
             || u.contains("/job/detail")
@@ -90,7 +93,6 @@ impl<'a> Poster<'a> {
         let selectors = [
             "xpath://*[contains(text(),'发布成功')]",
             "xpath://*[contains(text(),'职位发布成功')]",
-            "xpath://*[contains(text(),'已发布')]",
         ];
         for sel in selectors {
             if let Ok(Some(el)) = self.page.ele(sel) {
@@ -139,6 +141,76 @@ impl<'a> Poster<'a> {
         form_errors
     }
 
+    fn detect_paid_competitive_job_dialog(&mut self) -> Option<String> {
+        let script = r#"
+        (() => {
+            const bodyText = (document.body?.innerText || document.body?.textContent || '').replace(/\s+/g, '');
+            if (
+                bodyText.includes('当前职位为竞招职位，需付费发布') ||
+                (bodyText.includes('竞招职位') && bodyText.includes('需付费发布')) ||
+                (bodyText.includes('竞招岗位') && bodyText.includes('需付费发布')) ||
+                (bodyText.includes('竞招职位') && bodyText.includes('VIP账号') && bodyText.includes('直豆'))
+            ) {
+                return {
+                    ok: true,
+                    message: '当前职位为竞招职位，需付费发布',
+                    source: 'body',
+                    preview: bodyText.slice(0, 200)
+                };
+            }
+
+            const panels = Array.from(document.querySelectorAll('.block-vip2, .boss-dialog, .boss-popup__wrapper, [class*="vip"]'));
+            for (const panel of panels) {
+                const text = (panel.innerText || panel.textContent || '').replace(/\s+/g, '');
+                if (
+                    text.includes('当前职位为竞招职位，需付费发布') ||
+                    (text.includes('竞招职位') && text.includes('需付费发布')) ||
+                    (text.includes('竞招岗位') && text.includes('需付费发布')) ||
+                    (text.includes('竞招职位') && text.includes('VIP账号') && text.includes('直豆')) ||
+                    (panel.classList.contains('block-vip2') && text.includes('竞招职位'))
+                ) {
+                    return {
+                        ok: true,
+                        message: '当前职位为竞招职位，需付费发布',
+                        source: 'panel',
+                        preview: text.slice(0, 160)
+                    };
+                }
+            }
+            return { ok: false };
+        })()
+        "#;
+
+        let Ok(ret) = self.page.run_js(script) else {
+            return None;
+        };
+
+        let value = ret.get("value").unwrap_or(&ret);
+        let ok = value.get("ok").and_then(|v| v.as_bool()).unwrap_or(false);
+        if !ok {
+            return None;
+        }
+
+        Some(
+            value
+                .get("message")
+                .and_then(|v| v.as_str())
+                .unwrap_or("当前职位为竞招职位，需付费发布")
+                .to_string(),
+        )
+    }
+
+    fn wait_for_paid_competitive_job_dialog_after_success(&mut self) -> Option<String> {
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(8);
+        while std::time::Instant::now() < deadline {
+            if let Some(message) = self.detect_paid_competitive_job_dialog() {
+                return Some(message);
+            }
+            sleep_random_ms(450, 650);
+        }
+        None
+    }
+
     /// Click publish and turn the resulting page or validation hints into a result.
     pub(super) fn submit(&mut self, _job: &JobRecord) -> BResult<String> {
         let btn = SelectorMap::find_first(self.page, &self.selectors.submit_btn).or_else(|| {
@@ -183,13 +255,27 @@ impl<'a> Poster<'a> {
                 last_url = url.clone();
             }
 
+            if let Some(message) = self.detect_paid_competitive_job_dialog() {
+                log::warn!("  [发布失败] {}", message);
+                return Err(BossError::PostFailed(message));
+            }
+
             // 检查是否成功
             if Self::is_publish_success_url(&url) || self.has_publish_success_tip() {
+                log::info!("  [发布成功信号] 等待确认是否出现竞招付费弹窗...");
+                if let Some(message) = self.wait_for_paid_competitive_job_dialog_after_success() {
+                    log::warn!("  [发布失败] {}", message);
+                    return Err(BossError::PostFailed(message));
+                }
                 log::info!("  [发布成功] 最终URL: {}", url);
                 return Ok(url);
             }
 
             sleep_random_ms(550, 850);
+        }
+
+        if let Some(message) = self.detect_paid_competitive_job_dialog() {
+            return Err(BossError::PostFailed(message));
         }
 
         // 超时后再次检查表单错误

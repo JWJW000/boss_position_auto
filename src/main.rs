@@ -173,7 +173,7 @@ fn run() -> ExitCode {
                 success += 1;
                 info!("[成功] {} -> {}", job.职位名称, url);
                 if index + 1 < jobs.len() {
-                    info!("发布成功，等待 25-40 秒后继续下一个岗位...");
+                    info!("发布成功，等待 2.5-4 秒后继续下一个岗位...");
                     sleep_random_ms(25_00, 40_00);
                 }
             }

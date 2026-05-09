@@ -1,5 +1,63 @@
 use super::*;
 
+fn parse_date(date_str: &str) -> BResult<(i32, i32, i32)> {
+    // 尝试按 '-' 分割
+    if date_str.contains('-') {
+        let parts: Vec<&str> = date_str.split('-').collect();
+        if parts.len() == 3 {
+            let year = parts[0]
+                .parse::<i32>()
+                .map_err(|_| BossError::Config("年份解析失败".to_string()))?;
+            let month = parts[1]
+                .parse::<i32>()
+                .map_err(|_| BossError::Config("月份解析失败".to_string()))?;
+            let day = parts[2]
+                .parse::<i32>()
+                .map_err(|_| BossError::Config("日期解析失败".to_string()))?;
+            if (1..=12).contains(&month) && (1..=31).contains(&day) {
+                return Ok((year, month, day));
+            }
+        }
+    }
+    // 尝试按 '/' 分割
+    if date_str.contains('/') {
+        let parts: Vec<&str> = date_str.split('/').collect();
+        if parts.len() == 3 {
+            let year = parts[0]
+                .parse::<i32>()
+                .map_err(|_| BossError::Config("年份解析失败".to_string()))?;
+            let month = parts[1]
+                .parse::<i32>()
+                .map_err(|_| BossError::Config("月份解析失败".to_string()))?;
+            let day = parts[2]
+                .parse::<i32>()
+                .map_err(|_| BossError::Config("日期解析失败".to_string()))?;
+            if (1..=12).contains(&month) && (1..=31).contains(&day) {
+                return Ok((year, month, day));
+            }
+        }
+    }
+    // 尝试按中文分割
+    if date_str.contains('年') && date_str.contains('月') && date_str.contains('日') {
+        let parts: Vec<&str> = date_str.split(&['年', '月', '日'][..]).collect();
+        if parts.len() >= 3 {
+            let year = parts[0]
+                .parse::<i32>()
+                .map_err(|_| BossError::Config("年份解析失败".to_string()))?;
+            let month = parts[1]
+                .parse::<i32>()
+                .map_err(|_| BossError::Config("月份解析失败".to_string()))?;
+            let day = parts[2]
+                .parse::<i32>()
+                .map_err(|_| BossError::Config("日期解析失败".to_string()))?;
+            if (1..=12).contains(&month) && (1..=31).contains(&day) {
+                return Ok((year, month, day));
+            }
+        }
+    }
+    Err(BossError::Config(format!("无法解析日期格式: {}", date_str)))
+}
+
 impl<'a> Poster<'a> {
     /// 应届生校园招聘岗位发布流程
     /// 从上到下按照页面顺序填写所有字段
@@ -442,7 +500,6 @@ impl<'a> Poster<'a> {
 
     /// 应届生校园招聘 - 填写职位关键词
     fn fill_campus_tags(&mut self, job: &JobRecord) -> BResult<()> {
-        // 检查 Excel 中是否有关键词
         if !Self::has_excel_value(&job.关键词) {
             log::warn!("  [跳过] 职位关键词字段为空");
             return Ok(());
@@ -450,11 +507,10 @@ impl<'a> Poster<'a> {
 
         log::info!("  [开始] 填写职位关键词");
 
-        // 1. 将关键词按空格或逗号分割
         let keywords: Vec<&str> = job
             .关键词
-            .split(|c: char| c.is_whitespace() || c == ',' || c == '，')
-            .filter(|s| !s.trim().is_empty())
+            .split(|c: char| c.is_whitespace() || c == ',' || c == '，' || c == ';' || c == '；')
+            .filter(|s| !s.trim().is_empty() && s.trim() != "无")
             .collect();
 
         if keywords.is_empty() {
@@ -462,45 +518,60 @@ impl<'a> Poster<'a> {
             return Ok(());
         }
 
-        // 2. 查找关键词输入框
-        let tag_input = SelectorMap::find_first(self.page, &self.selectors.tags);
-        if tag_input.is_none() {
-            log::warn!("  [跳过] 未找到职位关键词输入框");
-            return Ok(());
-        }
+        // 方式一：新版 / form-row 页面，直接找输入框。保持和 fill_intern_tags 一致。
+        let direct_selectors = [
+            ".job-keyword input",
+            ".job-keywords input",
+            ".job-tags input",
+            ".tag-input input",
+            ".tags-input input",
+            ".keyword-input input",
+            ".publish-content input[placeholder*='关键词']",
+            ".publish-content input[placeholder*='标签']",
+            ".content input[placeholder*='关键词']",
+            ".content input[placeholder*='标签']",
+            "input[placeholder*='关键词']",
+            "input[placeholder*='职位关键词']",
+            "input[placeholder*='标签']",
+        ];
 
-        let tag_input = tag_input.unwrap();
+        for selector in direct_selectors {
+            if let Ok(Some(tag_input)) = self.page.ele(selector) {
+                for (i, keyword) in keywords.iter().enumerate() {
+                    let keyword = keyword.trim();
+                    if keyword.is_empty() {
+                        continue;
+                    }
 
-        // 3. 逐个输入关键词
-        for (i, keyword) in keywords.iter().enumerate() {
-            let keyword = keyword.trim();
-            if keyword.is_empty() {
-                continue;
+                    log::info!("  [输入] 关键词 {}: {}", i + 1, keyword);
+
+                    tag_input
+                        .click()
+                        .map_err(BossError::map_post("点击关键词输入框失败"))?;
+                    sleep_random_ms(200, 300);
+
+                    tag_input
+                        .input(keyword)
+                        .map_err(BossError::map_post("输入关键词失败"))?;
+                    sleep_random_ms(300, 500);
+
+                    tag_input
+                        .input("\n")
+                        .map_err(BossError::map_post("确认关键词失败"))?;
+                    sleep_random_ms(400, 600);
+                }
+
+                log::info!(
+                    "  [√] 职位关键词: 已通过直接输入方式填写 {} 个",
+                    keywords.len()
+                );
+                return Ok(());
             }
-
-            log::info!("  [输入] 关键词 {}: {}", i + 1, keyword);
-
-            // 4. 点击输入框
-            tag_input
-                .click()
-                .map_err(BossError::map_post("点击关键词输入框失败"))?;
-            sleep_random_ms(200, 300);
-
-            // 5. 输入关键词
-            tag_input
-                .input(keyword)
-                .map_err(BossError::map_post("输入关键词失败"))?;
-            sleep_random_ms(300, 500);
-
-            // 6. 按回车确认
-            tag_input
-                .input("\n")
-                .map_err(BossError::map_post("确认关键词失败"))?;
-            sleep_random_ms(400, 600);
         }
 
-        log::info!("  [√] 职位关键词: 已输入 {} 个", keywords.len());
-        Ok(())
+        // 方式二：旧版页面，复用全局 fill_tags 弹窗逻辑。
+        log::info!("  [提示] 未找到直接关键词输入框，尝试旧版关键词弹窗逻辑");
+        self.fill_tags(job)
     }
 
     /// 应届生校园招聘 - 填写工作地址
@@ -673,51 +744,507 @@ impl<'a> Poster<'a> {
         )))
     }
 
-    /// 应届生校园招聘 - 填写招聘截止时间
+    fn click_campus_deadline_trigger(&mut self) -> BResult<Option<rust_drission::Element>> {
+        if let Some(el) = SelectorMap::find_first(self.page, &self.selectors.deadline) {
+            el.click()
+                .map_err(BossError::map_element("点击招聘截止时间控件失败"))?;
+            sleep_random_ms(300, 500);
+            log::info!("  [Debug] 已通过截止时间选择器点击日期控件");
+            return Ok(Some(el));
+        }
+
+        let direct_selectors = [
+            ".publish-edit-form-row.deadline-wrap .ui-select-selection",
+            ".publish-edit-form-row.deadline-wrap input",
+            ".form-row.deadline-wrap .ui-select-selection",
+            ".form-row.deadline-wrap input",
+            ".deadline-wrap .ui-select-selection",
+            ".deadline-wrap input",
+            "[class*='deadline'] .ui-select-selection",
+            "[class*='deadline'] input",
+            "[class*='date'] .ui-select-selection",
+            "[class*='date'] input",
+        ];
+
+        for selector in direct_selectors {
+            if let Ok(Some(el)) = self.page.ele(selector) {
+                el.click()
+                    .map_err(BossError::map_element("点击招聘截止时间控件失败"))?;
+                sleep_random_ms(300, 500);
+                log::info!("  [Debug] 已通过直接候选选择器点击日期控件: {}", selector);
+                return Ok(Some(el));
+            }
+        }
+
+        let row_selectors = [
+            ".requirements-info-content .publish-edit-form-row",
+            ".publish-component",
+            ".publish-edit-form-row",
+            ".form-row",
+            ".job-form-item",
+            ".ui-form-item",
+            ".form-item",
+            "li",
+        ];
+        let label_selectors = [
+            ".publish-title",
+            ".title",
+            ".label",
+            ".form-label",
+            ".item-label",
+            ".name",
+            "label",
+            "span",
+            "div",
+        ];
+        let clickable_selectors = [
+            ".ui-select-selection",
+            ".ui-date-editor",
+            ".date-picker",
+            ".datepicker",
+            ".input-wrap",
+            ".ipt-wrap",
+            ".ui-select-inner",
+            "input",
+            "[tabindex]",
+            "[class*='date']",
+            "[class*='time']",
+        ];
+
+        for row_selector in row_selectors {
+            let rows = match self.page.eles(row_selector) {
+                Ok(rows) => rows,
+                Err(_) => continue,
+            };
+
+            for row in rows {
+                let mut is_deadline_row = false;
+                for label_selector in label_selectors {
+                    let labels = match row.elements(label_selector) {
+                        Ok(labels) => labels,
+                        Err(_) => continue,
+                    };
+                    for label in labels {
+                        let text = label.text_content().unwrap_or_default();
+                        let text = Self::clean_text(&text);
+                        if text.contains("招聘截止时间")
+                            || text.contains("招聘截止日期")
+                            || text.contains("截止时间")
+                            || text.contains("截止日期")
+                        {
+                            is_deadline_row = true;
+                            break;
+                        }
+                    }
+                    if is_deadline_row {
+                        break;
+                    }
+                }
+
+                if !is_deadline_row {
+                    let text = row.text_content().unwrap_or_default();
+                    let text = Self::clean_text(&text);
+                    is_deadline_row = text.contains("招聘截止时间")
+                        || text.contains("招聘截止日期")
+                        || text.contains("截止时间")
+                        || text.contains("截止日期");
+                }
+
+                if !is_deadline_row {
+                    continue;
+                }
+
+                for clickable_selector in clickable_selectors {
+                    if let Ok(Some(el)) = row.element(clickable_selector) {
+                        el.click()
+                            .map_err(BossError::map_element("点击招聘截止时间控件失败"))?;
+                        sleep_random_ms(300, 500);
+                        log::info!(
+                            "  [Debug] 已通过表单行点击日期控件: row={}, control={}",
+                            row_selector,
+                            clickable_selector
+                        );
+                        return Ok(Some(el));
+                    }
+                }
+            }
+        }
+
+        Ok(None)
+    }
+
     fn fill_campus_deadline(&mut self, job: &JobRecord) -> BResult<()> {
-        // 检查 Excel 中是否有截止日期值
         if !Self::has_excel_value(&job.截止日期) {
             log::warn!("  [跳过] 截止日期字段为空");
             return Ok(());
         }
 
-        log::info!("  [开始] 填写招聘截止时间");
+        log::info!("  [开始] 填写招聘截止时间: {}", job.截止日期);
 
-        // 1. 查找截止时间输入框
-        let deadline_input = SelectorMap::find_first(self.page, &self.selectors.deadline);
-        if deadline_input.is_none() {
-            log::warn!("  [跳过] 未找到截止时间输入框");
-            return Ok(());
+        // 解析目标日期 (年, 月, 日，月份为 1-indexed)
+        let target_date_str = job.截止日期.trim();
+        let (target_year, target_month, target_day) = parse_date(target_date_str)?;
+
+        if let Some(deadline_input) = self.click_campus_deadline_trigger()? {
+            let element_js = format!(
+                r#"
+                return (async function(input) {{
+                    const targetYear = {year};
+                    const targetMonth = {month};
+                    const targetDay = {day};
+                    const sleep = ms => new Promise(r => setTimeout(r, ms));
+                    const doc = input.ownerDocument || document;
+
+                    input.value = '';
+                    input.click();
+                    await sleep(700);
+
+                    function visible(el) {{
+                        if (!el) return false;
+                        const style = window.getComputedStyle(el);
+                        return style.display !== 'none' && style.visibility !== 'hidden';
+                    }}
+                    function clean(text) {{
+                        return String(text || '').replace(/\s+/g, '');
+                    }}
+
+                    let panels = [...doc.querySelectorAll('.ui-datepicker-panel')];
+                    let datePanel = panels.find(p => visible(p) && p.querySelector('.ui-datepicker-tb'));
+                    if (!datePanel) {{
+                        return {{
+                            ok: false,
+                            msg: 'date panel not found from element context',
+                            panelCount: panels.length,
+                            bodyText: clean(doc.body?.innerText || '').slice(0, 800),
+                            ownerDocumentUrl: doc.URL || ''
+                        }};
+                    }}
+
+                    function getCurrentYearMonth(panel) {{
+                        const btn = panel.querySelector('.ui-datepicker-btn');
+                        if (!btn) return null;
+                        const text = btn.innerText.trim();
+                        const y = text.match(/(\d{{4}})年/);
+                        const m = text.match(/(\d{{1,2}})月/);
+                        if (!y || !m) return null;
+                        return {{ year: parseInt(y[1]), month: parseInt(m[1]) }};
+                    }}
+
+                    for (let i = 0; i < 30; i++) {{
+                        let cur = getCurrentYearMonth(datePanel);
+                        if (!cur) break;
+                        if (cur.year === targetYear && cur.month === targetMonth) break;
+                        const nextBtn = datePanel.querySelector('.ui-datepicker-next');
+                        const prevBtn = datePanel.querySelector('.ui-datepicker-prev');
+                        if (cur.year < targetYear || (cur.year === targetYear && cur.month < targetMonth)) {{
+                            if (nextBtn) nextBtn.click();
+                        }} else {{
+                            if (prevBtn) prevBtn.click();
+                        }}
+                        await sleep(300);
+                    }}
+
+                    let clicked = false;
+                    const tds = datePanel.querySelectorAll('tbody td');
+                    for (let td of tds) {{
+                        const span = td.querySelector('span');
+                        if (span && parseInt(span.innerText) === targetDay && td.classList.contains('z-existed') && !td.classList.contains('z-invalid')) {{
+                            td.click();
+                            clicked = true;
+                            break;
+                        }}
+                    }}
+                    if (!clicked) {{
+                        return {{ ok: false, msg: 'day not found', panelText: clean(datePanel.innerText || '').slice(0, 500) }};
+                    }}
+
+                    await sleep(500);
+                    panels = [...doc.querySelectorAll('.ui-datepicker-panel')];
+                    const timePanel = panels.find(p => visible(p) && p.querySelector('.ui-datepicker-tb2'));
+                    if (timePanel) {{
+                        const firstTimeCell = timePanel.querySelector('.z-existed span');
+                        if (firstTimeCell) firstTimeCell.click();
+                        const confirm = timePanel.querySelector('.btn-sure, .btn-primary, .confirm');
+                        if (confirm) confirm.click();
+                        await sleep(300);
+                    }}
+
+                    const finalValue = `${{targetYear}}-${{String(targetMonth).padStart(2,'0')}}-${{String(targetDay).padStart(2,'0')}}`;
+                    input.value = finalValue;
+                    input.dispatchEvent(new Event('input', {{ bubbles: true }}));
+                    input.dispatchEvent(new Event('change', {{ bubbles: true }}));
+                    input.dispatchEvent(new Event('blur', {{ bubbles: true }}));
+                    return {{ ok: true, value: input.value }};
+                }})(this);
+                "#,
+                year = target_year,
+                month = target_month,
+                day = target_day
+            );
+            let ret = deadline_input
+                .run_js_await(&element_js)
+                .map_err(BossError::map_cdp("元素上下文选择日期失败"))?;
+            log::info!("  [Debug] 日期选择结果: {:?}", ret);
+
+            let ok = ret
+                .get("value")
+                .and_then(|v| v.get("ok"))
+                .and_then(|v| v.as_bool())
+                .or_else(|| ret.get("ok").and_then(|v| v.as_bool()))
+                .unwrap_or(false);
+
+            if ok {
+                log::info!("  [√] 招聘截止时间已选择: {}", job.截止日期);
+                return Ok(());
+            }
+
+            return Err(BossError::element(format!(
+                "招聘截止时间日期面板点击选择失败: {:?}",
+                ret
+            )));
         }
 
-        let deadline_input = deadline_input.unwrap();
+        // 通过真实点击日期控件选择，不直接写入值。日期面板渲染依赖事件循环，必须异步等待。
+        let js_script = format!(
+            r#"
+        new Promise(resolve => {{
+            const targetYear = {year};
+            const targetMonth = {month};
+            const targetDay = {day};
 
-        // 2. 点击输入框
-        deadline_input
-            .click()
-            .map_err(BossError::map_post("点击截止时间输入框失败"))?;
-        sleep_random_ms(300, 500);
+            function visible(el) {{
+                if (!el) return false;
+                const rect = el.getBoundingClientRect();
+                const style = window.getComputedStyle(el);
+                return rect.width > 0 && rect.height > 0 && style.display !== 'none' && style.visibility !== 'hidden';
+            }}
+            function clean(text) {{
+                return String(text || '').replace(/\s+/g, '');
+            }}
+            function isDeadlineText(text) {{
+                const t = clean(text);
+                return t.includes('招聘截止时间') || t.includes('招聘截止日期') || t.includes('截止时间') || t.includes('截止日期');
+            }}
+            function findDeadlineTrigger() {{
+                const directSelectors = [
+                    'input[placeholder="选择招聘截止时间"]',
+                    'input[placeholder*="招聘截止"]',
+                    'input[placeholder*="截止时间"]',
+                    'input[placeholder*="截止日期"]',
+                    'input[placeholder*="选择时间"]',
+                    'input[placeholder*="选择日期"]',
+                    'input[name*="deadline"]',
+                    'input[id*="deadline"]'
+                ];
+                for (const selector of directSelectors) {{
+                    const input = Array.from(document.querySelectorAll(selector)).find(visible);
+                    if (input) return input;
+                }}
 
-        // 3. 使用 JavaScript 设置日期值（更可靠）
-        let deadline_json = serde_json::to_string(&job.截止日期)
-            .map_err(BossError::map_config("截止日期序列化失败"))?;
+                const rowSelectors = [
+                    '.requirements-info-content',
+                    '.publish-component',
+                    '.publish-edit-form-row',
+                    '.form-row',
+                    '.job-form-item',
+                    '.ui-form-item',
+                    '.form-item',
+                    '[class*="deadline"]',
+                    '[class*="date"]'
+                ];
+                for (const row of Array.from(document.querySelectorAll(rowSelectors.join(',')))) {{
+                    const text = clean(row.innerText || row.textContent || '');
+                    if (!isDeadlineText(text)) continue;
+                    const input = Array.from(row.querySelectorAll('input')).find(visible);
+                    if (input) return input;
+                    const clickable = Array.from(row.querySelectorAll(
+                        '.ui-select-selection, .ui-date-editor, .date-picker, .datepicker, .input-wrap, .ipt-wrap, .ui-select-inner, [tabindex], button, span, div'
+                    ))
+                        .filter(visible)
+                        .sort((a, b) => {{
+                            const ar = a.getBoundingClientRect();
+                            const br = b.getBoundingClientRect();
+                            return (ar.width * ar.height) - (br.width * br.height);
+                        }})
+                        .find(el => {{
+                            const elText = clean(el.innerText || el.textContent || '');
+                            return !isDeadlineText(elText) || elText.includes('选择');
+                        }});
+                    if (clickable) return clickable;
+                }}
 
-        let script = format!(
-            "this.value = {}; this.dispatchEvent(new Event('input', {{bubbles:true}})); this.dispatchEvent(new Event('change', {{bubbles:true}})); true;",
-            deadline_json
+                const labels = Array.from(document.querySelectorAll('label, span, div, p'))
+                    .filter(el => visible(el) && isDeadlineText(el.innerText || el.textContent || ''))
+                    .sort((a, b) => {{
+                        const ar = a.getBoundingClientRect();
+                        const br = b.getBoundingClientRect();
+                        return (ar.width * ar.height) - (br.width * br.height);
+                    }});
+                for (const label of labels) {{
+                    let row = label;
+                    for (let i = 0; i < 6 && row; i++, row = row.parentElement) {{
+                        const input = Array.from(row.querySelectorAll('input')).find(visible);
+                        if (input) return input;
+                        const clickables = Array.from(row.querySelectorAll('.ui-select-selection, .ui-date-editor, .date-picker, .datepicker, .input-wrap, .ipt-wrap, .ui-select-inner, [tabindex], button, span, div'))
+                            .filter(el => visible(el) && el !== label)
+                            .sort((a, b) => {{
+                                const ar = a.getBoundingClientRect();
+                                const br = b.getBoundingClientRect();
+                                return (ar.width * ar.height) - (br.width * br.height);
+                            }});
+                        const candidate = clickables.find(el => {{
+                            const r = el.getBoundingClientRect();
+                            const lr = label.getBoundingClientRect();
+                            return r.left >= lr.left && r.top >= lr.top - 20;
+                        }}) || clickables[0];
+                        if (candidate) return candidate;
+                    }}
+                }}
+                return null;
+            }}
+            function clickLikeUser(el) {{
+                el.scrollIntoView({{ block: 'center', inline: 'center' }});
+                if (el.focus) el.focus();
+                ['pointerdown', 'mousedown', 'mouseup', 'click'].forEach(type => {{
+                    const EventCtor = type.startsWith('pointer') ? PointerEvent : MouseEvent;
+                    el.dispatchEvent(new EventCtor(type, {{ bubbles: true, cancelable: true, view: window }}));
+                }});
+            }}
+            function findDatePanel() {{
+                const panels = document.querySelectorAll('.ui-datepicker-panel, .datepicker-panel, .date-picker-panel, [class*="datepicker"], [class*="date-picker"], [class*="calendar"]');
+                for (let p of panels) {{
+                    if (visible(p) && (p.querySelector('.ui-datepicker-tb') || p.querySelector('tbody td') || p.innerText.includes('今天'))) {{
+                        return p;
+                    }}
+                }}
+                return null;
+            }}
+
+            const trigger = findDeadlineTrigger();
+            if (!trigger) {{
+                resolve({{
+                ok: false,
+                msg: 'deadline trigger not found',
+                inputs: Array.from(document.querySelectorAll('input')).map(input => ({{
+                    placeholder: input.getAttribute('placeholder') || '',
+                    name: input.getAttribute('name') || '',
+                    id: input.id || '',
+                    value: input.value || ''
+                }})).slice(0, 80),
+                deadlineRows: Array.from(document.querySelectorAll('.publish-component, .publish-edit-form-row, .form-row, .job-form-item, .ui-form-item, .form-item'))
+                    .map(row => clean(row.innerText || row.textContent || '').slice(0, 120))
+                    .filter(text => text.includes('截止') || text.includes('招聘'))
+                    .slice(0, 20),
+                bodyText: clean(document.body?.innerText || '').slice(0, 800)
+                }});
+                return;
+            }}
+            if (trigger) clickLikeUser(trigger);
+
+            function getCurrentYearMonth(panel) {{
+                const btn = panel.querySelector('.ui-datepicker-btn');
+                if (!btn) return null;
+                const text = btn.innerText.trim();
+                const yMatch = text.match(/(\d{{4}})年/);
+                const mMatch = text.match(/(\d{{1,2}})月/);
+                if (!yMatch || !mMatch) return null;
+                return {{ year: parseInt(yMatch[1]), month: parseInt(mMatch[1]) }};
+            }}
+            function clickDatePanel(panel) {{
+                let maxAttempts = 30;
+                for (let i = 0; i < maxAttempts; i++) {{
+                    let cur = getCurrentYearMonth(panel);
+                    if (!cur) break;
+                    if (cur.year === targetYear && cur.month === targetMonth) break;
+                    const nextBtn = panel.querySelector('.ui-datepicker-next');
+                    const prevBtn = panel.querySelector('.ui-datepicker-prev');
+                    if (cur.year < targetYear || (cur.year === targetYear && cur.month < targetMonth)) {{
+                        if (nextBtn) nextBtn.click();
+                    }} else {{
+                        if (prevBtn) prevBtn.click();
+                    }}
+                }}
+
+                const tds = panel.querySelectorAll('tbody td');
+                for (let td of tds) {{
+                    const span = td.querySelector('span') || td;
+                    if (parseInt(span.innerText) === targetDay && !td.classList.contains('z-invalid') && !td.classList.contains('disabled')) {{
+                        clickLikeUser(td);
+                        return true;
+                    }}
+                }}
+                return false;
+            }}
+
+            const started = Date.now();
+            const panelTimer = setInterval(() => {{
+                const datePanel = findDatePanel();
+                if (datePanel) {{
+                    clearInterval(panelTimer);
+                    if (!clickDatePanel(datePanel)) {{
+                        resolve({{ ok: false, msg: 'day not found', panelText: clean(datePanel.innerText || '').slice(0, 500) }});
+                        return;
+                    }}
+                    setTimeout(() => {{
+                        const timePanel = Array.from(document.querySelectorAll('.ui-datepicker-panel, .datepicker-panel, .date-picker-panel, [class*="datepicker"], [class*="date-picker"], [class*="calendar"]'))
+                            .find(p => visible(p) && (p.querySelector('.ui-datepicker-tb2') || clean(p.innerText || '').includes('请选择时间')));
+                        if (timePanel) {{
+                            const timeCells = timePanel.querySelectorAll('.z-existed span, tbody td span, li, span');
+                            const firstTime = Array.from(timeCells).find(visible);
+                            if (firstTime) clickLikeUser(firstTime);
+                            const confirmBtn = Array.from(timePanel.querySelectorAll('.btn-sure, .btn-primary, .confirm, button, span'))
+                                .find(el => visible(el) && ['确定', '确认', '完成'].some(text => clean(el.innerText || el.textContent || '') === text));
+                            if (confirmBtn) clickLikeUser(confirmBtn);
+                        }}
+                        resolve({{
+                            ok: true,
+                            triggerText: trigger ? clean(trigger.innerText || trigger.textContent || '').slice(0, 120) : 'clicked by rust',
+                            waitedMs: Date.now() - started
+                        }});
+                    }}, 700);
+                    return;
+                }}
+                if (Date.now() - started > 5000) {{
+                    clearInterval(panelTimer);
+                    resolve({{
+                        ok: false,
+                        msg: 'date panel not found',
+                        triggerText: trigger ? clean(trigger.innerText || trigger.textContent || '').slice(0, 120) : 'clicked by rust',
+                        visiblePanels: Array.from(document.querySelectorAll('[class*="date"], [class*="calendar"]'))
+                            .filter(visible)
+                            .map(el => ({{ className: String(el.className || ''), text: clean(el.innerText || '').slice(0, 120) }}))
+                            .slice(0, 30)
+                    }});
+                }}
+            }}, 250);
+        }})
+        "#,
+            year = target_year,
+            month = target_month,
+            day = target_day
         );
 
-        if let Err(js_err) = deadline_input.run_js(&script) {
-            log::warn!("  [WARN] 截止日期JS填写失败，尝试直接输入: {}", js_err);
+        let ret = self
+            .page
+            .run_js_await(&js_script)
+            .map_err(BossError::map_cdp("JS选择日期失败"))?;
+        log::info!("  [Debug] 日期选择结果: {:?}", ret);
 
-            // 4. 如果 JS 失败，尝试直接输入
-            deadline_input
-                .input(&job.截止日期)
-                .map_err(BossError::map_post("填写截止日期失败"))?;
+        let ok = ret
+            .get("value")
+            .and_then(|v| v.get("ok"))
+            .and_then(|v| v.as_bool())
+            .or_else(|| ret.get("ok").and_then(|v| v.as_bool()))
+            .unwrap_or(false);
+
+        if ok {
+            log::info!("  [√] 招聘截止时间已选择: {}", job.截止日期);
+            Ok(())
+        } else {
+            Err(BossError::element(format!(
+                "招聘截止时间日期面板点击选择失败: {:?}",
+                ret
+            )))
         }
-
-        sleep_random_ms(300, 500);
-        log::info!("  [√] 招聘截止时间: {}", job.截止日期);
-        Ok(())
     }
 }

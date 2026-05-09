@@ -19,8 +19,15 @@ impl<'a> Poster<'a> {
             "css:input[placeholder*='工作地址']",
             "css:input[placeholder*='地址']",
             "css:.job-edit-click-select-content .ipt-wrap input",
+            "css:.publish-component .job-edit-click-select-content input",
+            "css:.publish-component input[placeholder='选择工作地点']",
+            "css:.publish-component input[placeholder*='工作地点']",
+            "css:.publish-component input[placeholder*='工作地址']",
             "css:.publish-edit-form-row .job-edit-click-select-content input",
             "css:.form-row .job-edit-click-select-content input",
+            "css:.form-row input[placeholder='选择工作地点']",
+            "css:.form-row input[placeholder*='工作地点']",
+            "css:.form-row input[placeholder*='工作地址']",
         ];
 
         let city_input = SelectorMap::find_first(
@@ -62,7 +69,7 @@ impl<'a> Poster<'a> {
 
         let js_select_address = format!(
             r#"
-        (() => {{
+        new Promise(resolve => {{
             const targetRaw = {address};
             const targetCityRaw = {city};
             const buildingRaw = {building};
@@ -72,37 +79,83 @@ impl<'a> Poster<'a> {
             const target = clean(targetRaw);
             const targetCity = clean(targetCityRaw);
             const building = clean(buildingRaw);
-            const dialog = document.querySelector('.job-address-select-new-dialog, .single-address-select-wrap, .dialog-job-address-select');
-            if (!dialog) return {{ ok: false, msg: 'address dialog not found' }};
-            const items = Array.from(dialog.querySelectorAll('.address-item'));
-            if (!items.length) return {{ ok: false, msg: 'address items empty' }};
-            const candidates = items.map(item => {{
-                const addressText = item.querySelector('.address .address-text')?.innerText.trim() || '';
-                const areaText = item.querySelector('.area')?.innerText.trim() || '';
-                const addressClean = clean(addressText);
-                const areaClean = clean(areaText);
-                const fullText = clean(areaText + ' ' + addressText);
-                let score = 0;
-                if (fullText === target) score += 300;
-                if (fullText.includes(target)) score += 200;
-                if (target.includes(fullText)) score += 150;
-                if (addressClean === target) score += 280;
-                if (addressClean && target.includes(addressClean)) score += 260;
-                if (target && addressClean.includes(target)) score += 220;
-                if (building && addressClean.includes(building)) score += 180;
-                if (targetCity && areaClean.includes(targetCity)) score += 80;
-                if (targetCity && !areaClean.includes(targetCity)) score -= 200;
-                for (let ch of new Set(Array.from(building || target))) if (fullText.includes(ch)) score += 1;
-                return {{ item, addressText, areaText, addressClean, fullText, score }};
-            }}).sort((a, b) => b.score - a.score);
-            const best = candidates[0];
-            if (!best || best.score < 120) {{
-                return {{ ok: false, msg: 'no matched address', bestAddress: best ? best.addressText : '', bestArea: best ? best.areaText : '', bestScore: best ? best.score : 0 }};
-            }}
-            const radio = best.item.querySelector('.radio-box, .normal-radio');
-            if (radio) radio.click();
-            return {{ ok: true, chosenAddress: best.addressText, chosenArea: best.areaText, score: best.score }};
-        }})()
+            const findDialog = () => {{
+                const dialogs = Array.from(document.querySelectorAll(
+                    '.job-address-select-new-dialog, .single-address-select-wrap, .dialog-job-address-select, .boss-dialog, .boss-popup__wrapper'
+                ));
+                return dialogs.find(el => (el.innerText || '').includes('请选择工作地址'))
+                    || dialogs.find(el => el.querySelector && el.querySelector('.address-item'))
+                    || null;
+            }};
+            const started = Date.now();
+            const timer = setInterval(() => {{
+                const dialog = findDialog();
+                const items = dialog
+                    ? Array.from(dialog.querySelectorAll('.address-item'))
+                    : Array.from(document.querySelectorAll('.address-item'));
+                if (!dialog && Date.now() - started <= 6000) return;
+                if (!items.length && Date.now() - started <= 6000) return;
+                clearInterval(timer);
+                if (!dialog && !items.length) {{
+                    resolve({{
+                        ok: false,
+                        msg: 'address dialog not found',
+                        waitedMs: Date.now() - started,
+                        bodyText: (document.body?.innerText || '').replace(/\s+/g, ' ').slice(0, 500)
+                    }});
+                    return;
+                }}
+                if (!items.length) {{
+                    resolve({{
+                        ok: false,
+                        msg: 'address items empty',
+                        waitedMs: Date.now() - started,
+                        dialogText: (dialog.innerText || '').replace(/\s+/g, ' ').slice(0, 500)
+                    }});
+                    return;
+                }}
+                const candidates = items.map(item => {{
+                    const addressText = item.querySelector('.address .address-text, .address-text')?.innerText.trim() || '';
+                    const areaText = item.querySelector('.area')?.innerText.trim() || '';
+                    const addressClean = clean(addressText);
+                    const areaClean = clean(areaText);
+                    const fullText = clean(areaText + ' ' + addressText);
+                    let score = 0;
+                    if (fullText === target) score += 300;
+                    if (fullText.includes(target)) score += 200;
+                    if (target.includes(fullText)) score += 150;
+                    if (addressClean === target) score += 280;
+                    if (addressClean && target.includes(addressClean)) score += 260;
+                    if (target && addressClean.includes(target)) score += 220;
+                    if (building && addressClean.includes(building)) score += 180;
+                    if (targetCity && areaClean.includes(targetCity)) score += 80;
+                    if (targetCity && !areaClean.includes(targetCity)) score -= 200;
+                    for (let ch of new Set(Array.from(building || target))) if (fullText.includes(ch)) score += 1;
+                    return {{ item, addressText, areaText, addressClean, fullText, score }};
+                }}).sort((a, b) => b.score - a.score);
+                const best = candidates[0];
+                if (!best || best.score < 120) {{
+                    resolve({{
+                        ok: false,
+                        msg: 'no matched address',
+                        bestAddress: best ? best.addressText : '',
+                        bestArea: best ? best.areaText : '',
+                        bestScore: best ? best.score : 0,
+                        waitedMs: Date.now() - started
+                    }});
+                    return;
+                }}
+                const radio = best.item.querySelector('.radio-box, .normal-radio') || best.item;
+                radio.click();
+                resolve({{
+                    ok: true,
+                    chosenAddress: best.addressText,
+                    chosenArea: best.areaText,
+                    score: best.score,
+                    waitedMs: Date.now() - started
+                }});
+            }}, 250);
+        }})
         "#,
             address = address_json,
             city = city_json,
@@ -111,7 +164,7 @@ impl<'a> Poster<'a> {
 
         let select_ret = self
             .page
-            .run_js(&js_select_address)
+            .run_js_await(&js_select_address)
             .map_err(BossError::map_cdp("选择工作地址失败"))?;
         log::info!("  [Debug] 工作地址选择结果: {:?}", select_ret);
 
@@ -126,14 +179,63 @@ impl<'a> Poster<'a> {
 
         if is_ok(&select_ret) {
             sleep_random_ms(500, 800);
-            let sure_btn = self
-            .page
-            .ele("css:.job-address-select-new-dialog .btn-sure-v2, .single-address-select-wrap .btn-sure-v2")
-            .map_err(BossError::map_cdp("查找使用该地址按钮失败"))?
-            .ok_or_else(|| BossError::element("未找到使用该地址按钮"))?;
-            sure_btn
-                .click()
-                .map_err(BossError::map_post("点击使用该地址失败"))?;
+            let use_address_ret = self
+                .page
+                .run_js_await(
+                    r#"
+                    new Promise(resolve => {
+                        const clickNode = el => {
+                            el.scrollIntoView({ block: 'center', inline: 'center' });
+                            el.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, cancelable: true, view: window }));
+                            el.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, cancelable: true, view: window }));
+                            el.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true, view: window }));
+                            el.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true, view: window }));
+                            el.click();
+                            el.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, view: window }));
+                        };
+                        const findBtn = () => {
+                            const dialogs = Array.from(document.querySelectorAll('.job-address-select-new-dialog, .single-address-select-wrap, .dialog-job-address-select, .boss-dialog'));
+                            const dialog = dialogs.find(el => (el.innerText || '').includes('请选择工作地址'));
+                            if (!dialog) return null;
+                            const buttons = Array.from(dialog.querySelectorAll('button, span, a, .btn-sure-v2, .btn-sure'));
+                            return buttons.find(el => {
+                                const text = (el.innerText || el.textContent || '').replace(/\s+/g, '');
+                                const className = String(el.className || '');
+                                return text === '使用该地址' && !className.includes('disabled');
+                            }) || dialog.querySelector('.btn-sure-v2:not(.disabled), .btn-sure:not(.disabled)');
+                        };
+                        const started = Date.now();
+                        const timer = setInterval(() => {
+                            const btn = findBtn();
+                            if (btn) {
+                                clearInterval(timer);
+                                clickNode(btn);
+                                resolve({ ok: true, text: (btn.innerText || '').trim(), waitedMs: Date.now() - started });
+                                return;
+                            }
+                            if (Date.now() - started > 5000) {
+                                clearInterval(timer);
+                                resolve({
+                                    ok: false,
+                                    msg: 'use address button not found',
+                                    buttons: Array.from(document.querySelectorAll('button, span, a, div'))
+                                        .map(el => ({
+                                            className: String(el.className || ''),
+                                            text: (el.innerText || el.textContent || '').replace(/\s+/g, ' ').trim().slice(0, 80)
+                                        }))
+                                        .filter(item => item.text.includes('地址') || item.text.includes('使用'))
+                                        .slice(0, 80)
+                                });
+                            }
+                        }, 250);
+                    })
+                    "#,
+                )
+                .map_err(BossError::map_cdp("点击使用该地址失败"))?;
+            log::info!("  [Debug] 使用该地址点击结果: {:?}", use_address_ret);
+            if !is_ok(&use_address_ret) {
+                return Err(BossError::element("未找到使用该地址按钮"));
+            }
             sleep_random_ms(500, 800);
             log::info!("  [√] 工作地址已选择: {}", target_address);
             return Ok(());
@@ -141,14 +243,62 @@ impl<'a> Poster<'a> {
 
         // ---------- 3. 未匹配到，点击“添加新地址” ----------
         log::warn!("  [WARN] 未匹配到现有地址，点击添加新地址");
-        let add_btn = self
-        .page
-        .ele("css:.job-address-select-new-dialog .btn-outline-v2, .single-address-select-wrap .btn-outline-v2")
-        .map_err(BossError::map_cdp("查找添加新地址按钮失败"))?
-        .ok_or_else(|| BossError::element("未找到添加新地址按钮"))?;
-        add_btn
-            .click()
-            .map_err(BossError::map_post("点击添加新地址按钮失败"))?;
+        let add_ret = self
+            .page
+            .run_js_await(
+                r#"
+                new Promise(resolve => {
+                    const clickNode = el => {
+                        el.scrollIntoView({ block: 'center', inline: 'center' });
+                        el.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, cancelable: true, view: window }));
+                        el.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, cancelable: true, view: window }));
+                        el.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true, view: window }));
+                        el.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true, view: window }));
+                        el.click();
+                        el.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, view: window }));
+                    };
+                    const findBtn = () => {
+                        const dialogs = Array.from(document.querySelectorAll('.job-address-select-new-dialog, .single-address-select-wrap, .dialog-job-address-select, .boss-dialog'));
+                        const dialog = dialogs.find(el => (el.innerText || '').includes('请选择工作地址'));
+                        if (!dialog) return null;
+                            const buttons = Array.from(dialog.querySelectorAll('button, span, a, .btn-outline-v2'));
+                            return buttons.find(el => {
+                                const text = (el.innerText || el.textContent || '').replace(/\s+/g, '');
+                                return ['添加新地址', '新增地址', '添加地址', '新建地址'].some(label => text === label);
+                            }) || null;
+                        };
+                    const started = Date.now();
+                    const timer = setInterval(() => {
+                        const btn = findBtn();
+                        if (btn) {
+                            clearInterval(timer);
+                            clickNode(btn);
+                            resolve({ ok: true, text: (btn.innerText || '').trim(), waitedMs: Date.now() - started });
+                            return;
+                        }
+                        if (Date.now() - started > 5000) {
+                            clearInterval(timer);
+                            resolve({
+                                ok: false,
+                                msg: 'add address button not found',
+                                buttons: Array.from(document.querySelectorAll('button, span, a, div'))
+                                    .map(el => ({
+                                        className: String(el.className || ''),
+                                        text: (el.innerText || el.textContent || '').replace(/\s+/g, ' ').trim().slice(0, 80)
+                                    }))
+                                    .filter(item => item.text.includes('添加') || item.text.includes('新增') || item.text.includes('地址'))
+                                    .slice(0, 120)
+                            });
+                        }
+                    }, 250);
+                })
+                "#,
+            )
+            .map_err(BossError::map_cdp("点击添加新地址按钮失败"))?;
+        log::info!("  [Debug] 添加新地址点击结果: {:?}", add_ret);
+        if !is_ok(&add_ret) {
+            return Err(BossError::element("未找到添加新地址按钮"));
+        }
         sleep_random_ms(1500, 2000);
         log::info!("  [√] 已打开添加新地址弹窗");
 
