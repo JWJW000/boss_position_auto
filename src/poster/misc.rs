@@ -80,25 +80,37 @@ impl<'a> Poster<'a> {
 
     fn is_publish_success_url(url: &str) -> bool {
         let u = url.to_ascii_lowercase();
-        if u.contains("/job/edit") {
+        // 只要离开了编辑页（/job/edit），且没有回到登录页，通常就代表成功（或进入了审核/管理页）
+        if u.contains("/job/edit") || u.contains("login") {
             return false;
         }
+        // 包含以下关键字之一即视为成功
         u.contains("success")
             || u.contains("published")
             || u.contains("/job/detail")
             || u.contains("/job/manage")
+            || u.contains("/job/list")
+            || u.contains("/web/boss/index")
     }
 
     fn has_publish_success_tip(&mut self) -> bool {
         let selectors = [
-            "xpath://*[contains(text(),'发布成功')]",
-            "xpath://*[contains(text(),'职位发布成功')]",
+            "xpath://div[contains(@class,'boss-dialog')]//*[contains(text(),'发布成功')]",
+            "xpath://div[contains(@class,'boss-dialog')]//*[contains(text(),'职位发布成功')]",
+            "css:.publish-success-popup",
+            "xpath://h3[contains(text(),'发布成功')]",
+            "xpath://*[contains(text(),'已发布')]",
+            "xpath://*[contains(text(),'审核中')]",
         ];
         for sel in selectors {
             if let Ok(Some(el)) = self.page.ele(sel) {
-                if let Ok(text) = el.text() {
-                    if !text.trim().is_empty() {
-                        return true;
+                if el.is_displayed().unwrap_or(false) {
+                    if let Ok(text) = el.text() {
+                        let text = text.trim();
+                        if !text.is_empty() {
+                            log::info!("  [检测到成功/状态提示] {}", text);
+                            return true;
+                        }
                     }
                 }
             }
@@ -229,7 +241,7 @@ impl<'a> Poster<'a> {
         log::info!("  点击发布按钮...");
         btn.click().ok();
 
-        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(18);
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(20);
         let mut url = String::new();
         let mut last_url = String::new();
 
@@ -239,56 +251,52 @@ impl<'a> Poster<'a> {
                 .url()
                 .map_err(BossError::map_cdp("读取发布结果URL失败"))?;
 
-            // 先检查是否有表单错误
-            let form_errors = self.collect_form_errors();
-            if !form_errors.is_empty() {
-                log::warn!("  [检测到表单错误] {}", form_errors.join("；"));
-                return Err(BossError::PostFailed(format!(
-                    "发布未成功，表单校验提示: {}",
-                    form_errors.join("；")
-                )));
-            }
-
-            // 检查 URL 是否变化（说明页面跳转了）
+            // 1. 检查 URL 变化（只要离开了编辑页且没报错，就算成功）
             if url != last_url && !url.is_empty() {
                 log::info!("  [URL变化] {}", url);
                 last_url = url.clone();
-            }
-
-            if let Some(message) = self.detect_paid_competitive_job_dialog() {
-                log::warn!("  [发布失败] {}", message);
-                return Err(BossError::PostFailed(message));
-            }
-
-            // 检查是否成功
-            if Self::is_publish_success_url(&url) || self.has_publish_success_tip() {
-                log::info!("  [发布成功信号] 等待确认是否出现竞招付费弹窗...");
-                if let Some(message) = self.wait_for_paid_competitive_job_dialog_after_success() {
-                    log::warn!("  [发布失败] {}", message);
-                    return Err(BossError::PostFailed(message));
+                
+                if Self::is_publish_success_url(&url) {
+                    log::info!("  [判定成功] URL 已跳转至管理或成功页面: {}", url);
+                    return Ok(url);
                 }
-                log::info!("  [发布成功] 最终URL: {}", url);
+            }
+
+            // 2. 检查是否有可见的成功提示（即使用户说没有，我们也保留作为辅助）
+            if self.has_publish_success_tip() {
+                log::info!("  [判定成功] 检测到页面成功提示");
                 return Ok(url);
             }
 
-            sleep_random_ms(550, 850);
+            // 3. 检查竞招付费弹窗（这种弹窗意味着“没发成”，属于特定业务失败）
+            if let Some(message) = self.detect_paid_competitive_job_dialog() {
+                log::warn!("  [发布失败] 检测到付费/竞招限制: {}", message);
+                return Err(BossError::PostFailed(message));
+            }
+
+            // 4. 检查是否有表单校验错误（如果还在编辑页，且出现了错误提示，那肯定没成功）
+            if url.contains("/job/edit") {
+                let form_errors = self.collect_form_errors();
+                if !form_errors.is_empty() {
+                    log::warn!("  [发布失败] 检测到表单错误提示: {}", form_errors.join("；"));
+                    return Err(BossError::PostFailed(format!(
+                        "发布未成功，表单校验提示: {}",
+                        form_errors.join("；")
+                    )));
+                }
+            }
+
+            sleep_random_ms(600, 1000);
         }
 
-        if let Some(message) = self.detect_paid_competitive_job_dialog() {
-            return Err(BossError::PostFailed(message));
-        }
-
-        // 超时后再次检查表单错误
-        let form_errors = self.collect_form_errors();
-        if !form_errors.is_empty() {
-            return Err(BossError::PostFailed(format!(
-                "发布未成功，表单校验提示: {}",
-                form_errors.join("；")
-            )));
+        // 超时后的最终判定
+        url = self.page.url().unwrap_or_default();
+        if Self::is_publish_success_url(&url) {
+             return Ok(url);
         }
 
         Err(BossError::PostFailed(format!(
-            "点击发布后未进入成功页，当前URL: {}",
+            "发布超时：点击按钮后页面未跳转且未检测到成功状态，当前URL: {}",
             url
         )))
     }

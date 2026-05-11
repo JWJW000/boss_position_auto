@@ -137,35 +137,16 @@ impl SelectorMap {
         page: &ChromiumPage,
         selectors: &[String],
     ) -> Option<rust_drission::Element> {
-        log::debug!("开始尝试 {} 个选择器定位元素", selectors.len());
+        log::trace!("开始尝试 {} 个选择器定位元素", selectors.len());
 
         for (index, sel) in selectors.iter().enumerate() {
-            log::debug!("  [尝试 {}/{}] 选择器: {}", index + 1, selectors.len(), sel);
-
             match page.ele(sel) {
                 Ok(Some(el)) => {
-                    log::info!("  [✓ 成功] 选择器定位成功: {}", sel);
+                    log::debug!("  [✓] 选择器定位成功: {}", sel);
                     return Some(el);
                 }
-                Ok(None) => {
-                    log::warn!("  [✗ 未找到] 选择器未匹配到元素: {}", sel);
-                    log::warn!(
-                        "    → 可在浏览器控制台测试: document.querySelector('{}') 或 $x('{}')",
-                        sel.trim_start_matches("css:"),
-                        sel.trim_start_matches("xpath:")
-                    );
-                }
-                Err(e) => {
-                    log::error!("  [✗ 错误] 选择器执行失败: {} | 错误: {:?}", sel, e);
-                    log::error!("    → 可在浏览器控制台测试该选择器语法是否正确");
-                }
+                _ => {}
             }
-        }
-
-        log::error!("[失败] 所有 {} 个选择器均未找到元素", selectors.len());
-        log::error!("  → 尝试的选择器列表:");
-        for (i, sel) in selectors.iter().enumerate() {
-            log::error!("    {}. {}", i + 1, sel);
         }
 
         None

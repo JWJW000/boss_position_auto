@@ -30,14 +30,14 @@ impl<'a> Poster<'a> {
             "css:.job-category-container .ipt-wrap input",
         ];
 
-        let el = SelectorMap::find_first(
-            self.page,
+        let el = self.wait_and_find(
             &selectors.iter().map(|s| s.to_string()).collect::<Vec<_>>(),
+            5000,
         )
-        .ok_or_else(|| BossError::element("未找到职位类型输入框 input[name='jobCategory']"))?;
+        .map_err(|_| BossError::element("未找到职位类型输入框 input[name='jobCategory']"))?;
 
         let _ = el.run_js("this.scrollIntoView({block:'center', inline:'center'});");
-        sleep_random_ms(300, 500);
+        std::thread::sleep(Duration::from_millis(300));
 
         el.click()
             .map_err(BossError::map_post("点击职位类型输入框失败"))?;

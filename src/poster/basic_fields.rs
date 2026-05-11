@@ -6,8 +6,8 @@ impl<'a> Poster<'a> {
         if !Self::has_excel_value(&job.职位名称) {
             return Ok(());
         }
-        let el = SelectorMap::find_first(self.page, &self.selectors.job_title)
-            .ok_or_else(|| BossError::element("职位名称输入框"))?;
+        let el = self.wait_and_find(&self.selectors.job_title, 3000)
+            .map_err(|_| BossError::element("职位名称输入框"))?;
 
         el.input(&job.职位名称)
             .map_err(BossError::map_post("填写职位名称失败"))?;
@@ -21,8 +21,8 @@ impl<'a> Poster<'a> {
         if !Self::has_excel_value(&job.职位描述) {
             return Ok(());
         }
-        let el = SelectorMap::find_first(self.page, &self.selectors.job_desc)
-            .ok_or_else(|| BossError::element("职位描述编辑器"))?;
+        let el = self.wait_and_find(&self.selectors.job_desc, 3000)
+            .map_err(|_| BossError::element("职位描述编辑器"))?;
 
         let desc = &job.职位描述;
         let tag = el.tag().unwrap_or_default();

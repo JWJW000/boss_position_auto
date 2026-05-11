@@ -9,10 +9,11 @@ impl<'a> Poster<'a> {
             .map_err(BossError::map_cdp("activate publish tab failed"))
     }
 
-    /// Pause briefly after a completed step so Vue-rendered fields stabilize.
+    /// Optimized wait for UI stability after an action.
     pub(super) fn settle_after(label: &str) {
-        log::info!("  等待页面状态稳定: {}", label);
-        sleep_random_ms(650, STEP_SETTLE_MS);
+        log::debug!("  等待页面状态稳定: {}", label);
+        // Minimal fixed sleep, localized retries in run_step handle the rest
+        std::thread::sleep(Duration::from_millis(400));
     }
 
     /// Return visible dropdown options, falling back to all options for debugging.
@@ -237,22 +238,80 @@ impl<'a> Poster<'a> {
         }
     }
 
-    /// Run a named posting step with consistent start/success/failure logging.
+    /// Run a named posting step with localized retry logic.
+    /// This handles intermittent "element not found" errors by retrying the step
+    /// up to 3 times with short delays.
     pub(super) fn run_step<F>(&mut self, label: &str, mut step: F) -> BResult<()>
     where
         F: FnMut(&mut Self) -> BResult<()>,
     {
         log::info!("  -> 开始步骤: {}", label);
-        match step(self) {
-            Ok(()) => {
-                log::info!("  [√] 步骤完成: {}", label);
-                Self::settle_after(label);
-                Ok(())
+        let mut last_error = None;
+
+        for attempt in 1..=3 {
+            if attempt > 1 {
+                log::warn!("  [重试 {}/3] 步骤: {}", attempt, label);
+                // Backoff: 800ms, 1600ms
+                std::thread::sleep(Duration::from_millis(400 * (1 << attempt)));
+            } else {
+                // Ensure initial stability before the first attempt
+                self.wait_for_stability(1500);
             }
-            Err(e) => {
-                log::error!("  [x] 步骤失败: {} | {}", label, e);
-                Err(BossError::PostFailed(format!("步骤[{}]失败: {}", label, e)))
+
+            match step(self) {
+                Ok(()) => {
+                    log::info!("  [√] 步骤完成: {}", label);
+                    Self::settle_after(label);
+                    return Ok(());
+                }
+                Err(e) => {
+                    log::debug!("  步骤尝试 {} 失败: {}", attempt, e);
+                    last_error = Some(e);
+                }
             }
         }
+
+        let e = last_error.unwrap();
+        log::error!("  [x] 步骤最终失败 (3次尝试): {} | {}", label, e);
+        Err(BossError::PostFailed(format!("步骤[{}]重试失败: {}", label, e)))
+    }
+
+    /// Wait until the DOM stops changing for at least 150ms, or timeout.
+    pub(super) fn wait_for_stability(&self, timeout_ms: u64) {
+        let js = format!(r#"
+            (async () => {{
+                const timeout = {};
+                const start = Date.now();
+                let lastChange = Date.now();
+                const observer = new MutationObserver(() => {{ lastChange = Date.now(); }});
+                observer.observe(document.body, {{ attributes: true, childList: true, subtree: true }});
+                while (Date.now() - start < timeout) {{
+                    if (Date.now() - lastChange > 150) return true;
+                    await new Promise(r => setTimeout(r, 50));
+                }}
+                return false;
+            }})()
+        "#, timeout_ms);
+        log::trace!("正在等待页面稳定...");
+        let _ = self.page.run_js_await(&js);
+    }
+
+    /// Wait for an element to appear and be visible.
+    /// Changed to take &self to avoid borrow checker issues when passing field references.
+    pub(super) fn wait_and_find(
+        &self,
+        selectors: &[String],
+        timeout_ms: u64,
+    ) -> BResult<rust_drission::Element> {
+        let deadline = std::time::Instant::now() + Duration::from_millis(timeout_ms);
+        while std::time::Instant::now() < deadline {
+            if let Some(el) = SelectorMap::find_first(self.page, selectors) {
+                if el.is_displayed().unwrap_or(false) {
+                    return Ok(el);
+                }
+            }
+            std::thread::sleep(Duration::from_millis(200));
+        }
+        Err(BossError::element("等待元素超时"))
     }
 }

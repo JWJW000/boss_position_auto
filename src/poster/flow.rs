@@ -9,25 +9,10 @@ impl<'a> Poster<'a> {
 
         // 等待表单加载（等待职位名称输入框出现）
         log::info!("等待表单加载...");
-        sleep_random_ms(1500, 2000); // 增加初始等待时间
+        self.wait_and_find(&self.selectors.job_title, 15000)
+            .map_err(|_| BossError::element("职位名称输入框 (表单加载超时)"))?;
 
-        let mut form_loaded = false;
-        for attempt in 0..30 {
-            // 增加重试次数到30次
-            if let Ok(Some(_)) = self.page.ele("css:input[name='jobName']") {
-                log::info!("表单已加载");
-                form_loaded = true;
-                break;
-            }
-            if attempt % 5 == 0 && attempt > 0 {
-                log::info!("等待表单加载... (尝试 {}/30)", attempt);
-            }
-            sleep_random_ms(900, 1300);
-        }
-        if !form_loaded {
-            log::error!("表单加载超时（已等待30次重试）");
-            return Err(BossError::element("职位名称输入框"));
-        }
+        log::info!("表单已加载");
 
         self.run_step("招聘类型", |s| s.fill_job_type(job))?;
         self.run_step("职位名称", |s| s.fill_job_title(job))?;
@@ -48,6 +33,13 @@ impl<'a> Poster<'a> {
     /// Navigate the active tab to the BOSS job publishing page.
     pub(super) fn navigate_to_publish_page(&mut self) -> BResult<()> {
         self.activate_current_tab()?;
+
+        if let Ok(u) = self.page.url() {
+            if u.contains("/job/edit") && !u.contains("login") {
+                log::info!("已经在发布页，跳过导航");
+                return Ok(());
+            }
+        }
 
         let publish_urls = ["https://www.zhipin.com/web/chat/job/edit?encryptId=0&enterSource=2"];
 
