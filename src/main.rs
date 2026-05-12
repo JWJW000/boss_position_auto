@@ -173,8 +173,8 @@ fn run() -> ExitCode {
                 success += 1;
                 info!("[成功] {} -> {}", job.职位名称, url);
                 if index + 1 < jobs.len() {
-                    info!("发布成功，等待 2.5-4 秒后继续下一个岗位...");
-                    sleep_random_ms(25_00, 40_00);
+                    info!("等待 2.5-4 秒后继续下一个岗位...");
+                    sleep_random_ms(2500, 4000);
                 }
             }
             Err(e) => {
@@ -188,6 +188,55 @@ fn run() -> ExitCode {
                     job: job.clone(),
                     error_message: error_msg,
                 });
+            }
+        }
+    }
+
+    // --- 重试逻辑 (针对非“竞招”岗位，最多尝试3次，即再重试2轮) ---
+    for attempt in 2..=3 {
+        let to_retry: Vec<FailedJob> = failed_jobs
+            .iter()
+            .filter(|fj| !fj.error_message.contains("竞招"))
+            .cloned()
+            .collect();
+
+        if to_retry.is_empty() {
+            break;
+        }
+
+        info!("\n===== 开始第 {} 轮重试 (剩余 {} 个岗位) =====", attempt, to_retry.len());
+
+        let to_retry_len = to_retry.len();
+        for (retry_idx, fj) in to_retry.into_iter().enumerate() {
+            info!("正在重试第{}条 (第{}次尝试): {}", fj.row_number, attempt, fj.job.职位名称);
+            match poster.post(&fj.job) {
+                Ok(url) => {
+                    success += 1;
+                    failed -= 1;
+                    info!("[重试成功] {} -> {}", fj.job.职位名称, url);
+                    
+                    // 从 failed_jobs 中移除该岗位
+                    failed_jobs.retain(|f| f.row_number != fj.row_number);
+
+                    if retry_idx + 1 < to_retry_len {
+                        info!("等待 2.5-4 秒后继续下一个重试岗位...");
+                        sleep_random_ms(2500, 4000);
+                    }
+                }
+                Err(e) => {
+                    let error_msg = format!("{}", e);
+                    error!("[重试失败] 第{}条: {}", fj.row_number, error_msg);
+
+                    // 更新失败原因
+                    if let Some(f) = failed_jobs.iter_mut().find(|f| f.row_number == fj.row_number) {
+                        f.error_message = error_msg;
+                    }
+
+                    if retry_idx + 1 < to_retry_len {
+                        info!("等待 2.5-4 秒后继续下一个重试岗位...");
+                        sleep_random_ms(2500, 4000);
+                    }
+                }
             }
         }
     }

@@ -507,57 +507,6 @@ impl<'a> Poster<'a> {
 
     /// 社招全职 - 填写职位关键词
     fn fill_full_time_tags(&mut self, job: &JobRecord) -> BResult<()> {
-        if !Self::has_excel_value(&job.关键词) {
-            log::warn!("  [跳过] 职位关键词字段为空");
-            return Ok(());
-        }
-
-        log::info!("  [开始] 填写职位关键词");
-
-        let keywords: Vec<&str> = job
-            .关键词
-            .split(|c: char| c.is_whitespace() || c == ',' || c == '，')
-            .filter(|s| !s.trim().is_empty())
-            .collect();
-
-        if keywords.is_empty() {
-            log::warn!("  [跳过] 关键词分割后为空");
-            return Ok(());
-        }
-
-        let tag_input = SelectorMap::find_first(self.page, &self.selectors.tags);
-        if tag_input.is_none() {
-            log::warn!("  [跳过] 未找到职位关键词输入框");
-            return Ok(());
-        }
-
-        let tag_input = tag_input.unwrap();
-
-        for (i, keyword) in keywords.iter().enumerate() {
-            let keyword = keyword.trim();
-            if keyword.is_empty() {
-                continue;
-            }
-
-            log::info!("  [输入] 关键词 {}: {}", i + 1, keyword);
-
-            tag_input
-                .click()
-                .map_err(BossError::map_post("点击关键词输入框失败"))?;
-            sleep_random_ms(200, 300);
-
-            tag_input
-                .input(keyword)
-                .map_err(BossError::map_post("输入关键词失败"))?;
-            sleep_random_ms(300, 500);
-
-            tag_input
-                .input("\n")
-                .map_err(BossError::map_post("确认关键词失败"))?;
-            sleep_random_ms(400, 600);
-        }
-
-        log::info!("  [√] 职位关键词: 已输入 {} 个", keywords.len());
-        Ok(())
+        self.fill_tags(job)
     }
 }

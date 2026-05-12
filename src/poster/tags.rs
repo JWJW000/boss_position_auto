@@ -3,9 +3,10 @@ use super::*;
 impl<'a> Poster<'a> {
     /// Fill the job keyword tags.
     ///
-    /// 兼容两种页面：
-    /// 1. 旧版：点击 .add-skill 后出现自定义关键词弹窗 / 标签题目组。
-    /// 2. 新版：页面上直接有关键词输入框，不依赖弹窗。
+    /// 兼容三种主要的页面结构：
+    /// 1. 页面直接输入：直接在表单页找到 input 输入。
+    /// 2. 弹窗直接输入：打开弹窗后，弹窗内是个 input 输入框。
+    /// 3. 弹窗选择 + 自定义：打开弹窗后，有预设的标签组（.question-item 或 .skill-group-item）可选，也可手动新增。
     pub(super) fn fill_tags(&mut self, job: &JobRecord) -> BResult<()> {
         let mut tags = Self::split_tag_items(&job.关键词);
         if tags.is_empty() {
@@ -14,139 +15,161 @@ impl<'a> Poster<'a> {
 
         log::info!("  [DEBUG] 职位标签拆分: {:?}", tags);
 
-        // ==================== 方式一：新版页面，直接输入关键词 ====================
-        // form-row 风格页面通常没有旧版关键词弹窗，优先尝试直接找输入框。
+        // ==================== 方式一：页面直接输入 (无需弹窗) ====================
         if self.try_fill_tags_by_direct_input(&tags)? {
-            log::info!("  [√] 职位关键词: 已通过直接输入方式填写 {} 个", tags.len());
+            log::info!("  [√] 职位关键词: 已通过页面直接输入方式填写 {} 个", tags.len());
             return Ok(());
         }
 
-        // ==================== 方式二：旧版页面，打开关键词弹窗 ====================
+        // ==================== 准备进入弹窗逻辑 ====================
         let opened = self.open_custom_tag_dialog()?;
         if !opened {
-            log::warn!("  [跳过] 未找到职位关键词入口，也未找到直接输入框");
+            log::warn!("  [跳过] 未找到职位关键词入口，且页面无直接输入框");
             return Ok(());
         }
 
-        sleep_random_ms(300, 500);
+        sleep_random_ms(500, 800);
 
-        // 弹窗打开后，再尝试一次直接输入。部分页面点击入口后出现的是输入框，不是 .question-item。
+        // ==================== 方式二：弹窗内直接输入 ====================
+        // 部分职位点击后弹出的直接就是一个输入框
         if self.try_fill_tags_by_direct_input(&tags)? {
-            log::info!(
-                "  [√] 职位关键词: 已通过弹出输入框方式填写 {} 个",
-                tags.len()
-            );
+            log::info!("  [√] 职位关键词: 已通过弹窗输入框方式填写 {} 个", tags.len());
             self.try_click_tag_final_confirm()?;
             return Ok(());
         }
 
-        // 旧版问题组选项逻辑。
-        let question_items = match self.page.eles(".question-item") {
-            Ok(items) => items,
-            Err(_) => Vec::new(),
-        };
-
-        if question_items.is_empty() {
-            log::warn!("  [跳过] 未找到标签题目组，可能当前页面不需要填写关键词弹窗");
-            return Ok(());
-        }
-
-        for question in question_items {
-            // 必须放在点击 li 之前，避免点击后 Vue 重渲染导致 question 节点失效
-            let is_required = question
-                .element(".question-title .required")
-                .map(|x| x.is_some())
-                .unwrap_or(false);
-
-            let li_eles = question
-                .elements(".question-option li")
-                .map_err(BossError::map_element("未找到标签选项"))?;
-
-            if li_eles.is_empty() {
-                continue;
-            }
-
-            let mut selected_count = 0;
-
-            for li_ele in li_eles.iter() {
-                let li_content = li_ele
-                    .text_content()
-                    .map_err(BossError::map_element("读取标签文本失败"))?
-                    .trim()
-                    .to_string();
-
-                if tags.contains(&li_content) {
-                    li_ele
-                        .click()
-                        .map_err(BossError::map_element("点击标签失败"))?;
-
-                    tags.retain(|x| x != &li_content);
-                    selected_count += 1;
-
-                    log::info!("[Info] 已选择匹配标签: {}", li_content);
-                    sleep_random_ms(80, 150);
+        // ==================== 方式三：弹窗内的标签组 / 技能组 ====================
+        // 兼容旧版 .question-item 和新版 .skill-group-item (如 Java架构师 弹窗)
+        // 增加循环检测逻辑，处理点击一个选项后出现新必填项的情况
+        for attempt in 1..=5 {
+            let skill_group_selectors = [".question-item", ".skill-group-item"];
+            let mut groups = Vec::new();
+            for sel in skill_group_selectors {
+                if let Ok(eles) = self.page.eles(sel) {
+                    if !eles.is_empty() {
+                        groups = eles;
+                        break;
+                    }
                 }
             }
 
-            if selected_count == 0 {
-                if is_required {
-                    let first_li = li_eles
-                        .first()
-                        .ok_or_else(|| BossError::element("必填标签组没有可选项"))?;
-
-                    let first_text = first_li
-                        .text_content()
-                        .unwrap_or_else(|_| "<读取失败>".to_string());
-
-                    log::info!(
-                        "[Info] 必填标签组未匹配到关键词，默认选择第一个: {}",
-                        first_text
-                    );
-
-                    first_li
-                        .click()
-                        .map_err(BossError::map_element("点击必填标签组默认选项失败"))?;
-                } else {
-                    log::info!("[Info] 非必填标签组未匹配到关键词，跳过默认选择");
+            if groups.is_empty() {
+                if attempt == 1 {
+                    log::info!("  [提示] 未在弹窗中找到预定义标签组，尝试自定义新增");
                 }
+                break;
             }
 
-            sleep_random_ms(100, 200);
-        }
+            log::info!("  [开始] 弹窗标签处理 (尝试 {}/5, 组数: {})", attempt, groups.len());
+            let mut changed = false;
 
-        log::info!("[Debug] 需要自定义新增的关键字: {:?}", tags);
+            for group in groups {
+                let option_selectors = [".question-option li", ".skill-item", ".group-content span"];
+                let mut options = Vec::new();
+                for sel in option_selectors {
+                    if let Ok(eles) = group.elements(sel) {
+                        if !eles.is_empty() {
+                            options = eles;
+                            break;
+                        }
+                    }
+                }
 
-        for tag in tags {
-            let add_skill_btn = match self.page.ele(".add-skill") {
-                Ok(Some(ele)) => ele,
-                _ => {
-                    log::warn!("[Warn] 未找到自定义招聘偏好入口，跳过自定义关键词: {}", tag);
+                if options.is_empty() {
                     continue;
                 }
-            };
 
-            add_skill_btn
-                .click()
-                .map_err(BossError::map_element("点击自定义招聘偏好入口失败"))?;
+                // 检查该组是否已选 (部分结构可以通过 class 判断)
+                let mut group_has_selection = false;
+                for opt in &options {
+                    if let Ok(c) = opt.attr("class") {
+                        if c.contains("active") || c.contains("selected") {
+                            group_has_selection = true;
+                            break;
+                        }
+                    }
+                }
 
-            sleep_random_ms(300, 500);
+                // 检查是否必填 (仅对 .question-item 有效)
+                let is_required = group
+                    .element(".question-title .required")
+                    .map(|x| x.is_some())
+                    .unwrap_or(false);
 
-            if !self.try_input_custom_tag_by_js(&tag)? {
-                log::warn!("[Warn] 未找到自定义关键词输入框，跳过: {}", tag);
-                continue;
+                let mut current_group_filled = false;
+
+                for opt in options.iter() {
+                    let text = opt.text_content().unwrap_or_default().trim().to_string();
+                    if tags.contains(&text) {
+                        let is_selected = opt
+                            .attr("class")
+                            .map(|c| c.contains("active") || c.contains("selected"))
+                            .unwrap_or(false);
+
+                        if !is_selected {
+                            if opt.click().is_ok() {
+                                changed = true;
+                                sleep_random_ms(200, 400);
+                            }
+                        }
+
+                        tags.retain(|x| x != &text);
+                        current_group_filled = true;
+                        group_has_selection = true;
+                        log::info!("    [选中] {}", text);
+                    }
+                }
+
+                // 兜底逻辑：如果是必填且目前仍然没有任何选中项，则强制点第一个
+                if is_required && !group_has_selection {
+                    if let Some(first) = options.first() {
+                        let first_text = first.text_content().unwrap_or_default();
+                        log::info!("    [必填兜底] 组未选择，默认选第一个: {}", first_text);
+                        if first.click().is_ok() {
+                            changed = true;
+                            sleep_random_ms(200, 400);
+                        }
+                    }
+                }
             }
 
-            sleep_random_ms(500, 800);
-
-            if self.try_click_custom_tag_confirm()? {
-                log::info!("[Info] 已新增自定义关键词: {}", tag);
-            } else {
-                log::warn!("[Warn] 未找到自定义关键词确认按钮，跳过确认: {}", tag);
+            if !changed {
+                log::info!("  [完成] 标签组处理已稳定，无更多变化");
+                break;
             }
-
+            // 如果发生了点击，可能触发了新 UI，循环下一次继续检测
             sleep_random_ms(500, 800);
         }
 
+        // ==================== 方式四：手动新增剩余的自定义标签 ====================
+        if !tags.is_empty() {
+            log::info!("  [自定义] 剩余未填写的标签: {:?}", tags);
+            for tag in tags {
+                // 弹窗内的 "新增" 按钮通常是 .add-skill 或 .job-skill-add
+                let add_btn_selectors = [".add-skill", ".job-skill-add", ".add-keyword"];
+                let mut found_add = false;
+                for sel in add_btn_selectors {
+                    if let Ok(Some(btn)) = self.page.ele(sel) {
+                        if btn.click().is_ok() {
+                            sleep_random_ms(400, 600);
+                            if self.try_input_custom_tag_by_js(&tag)? {
+                                if self.try_click_custom_tag_confirm()? {
+                                    log::info!("    [新增成功] {}", tag);
+                                    found_add = true;
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                }
+                if !found_add {
+                    log::warn!("    [新增失败] 未找到自定义输入入口或确认按钮: {}", tag);
+                }
+                sleep_random_ms(400, 600);
+            }
+        }
+
+        // 最终点击确认关闭弹窗
         self.try_click_tag_final_confirm()?;
 
         Ok(())
@@ -173,8 +196,11 @@ impl<'a> Poster<'a> {
         let mut input_ele = None;
         for selector in selectors {
             if let Ok(Some(ele)) = self.page.ele(selector) {
-                input_ele = Some(ele);
-                break;
+                // 必须是可见的且不是弹窗外的遮罩等
+                if ele.is_displayed().unwrap_or(false) {
+                    input_ele = Some(ele);
+                    break;
+                }
             }
         }
 
@@ -188,22 +214,16 @@ impl<'a> Poster<'a> {
                 continue;
             }
 
-            input_ele
-                .click()
-                .map_err(BossError::map_element("点击关键词输入框失败"))?;
+            input_ele.click().ok();
             sleep_random_ms(150, 250);
 
-            input_ele
-                .input(tag)
-                .map_err(BossError::map_element("输入关键词失败"))?;
+            input_ele.input(tag).ok();
             sleep_random_ms(200, 350);
 
-            input_ele
-                .input("\n")
-                .map_err(BossError::map_element("确认关键词失败"))?;
+            input_ele.input("\n").ok();
             sleep_random_ms(300, 500);
 
-            log::info!("[Info] 已输入关键词: {}", tag);
+            log::info!("    [输入] {}", tag);
         }
 
         Ok(true)
@@ -231,7 +251,7 @@ impl<'a> Poster<'a> {
                 let input = null;
                 for (const selector of selectors) {{
                     input = document.querySelector(selector);
-                    if (input) break;
+                    if (input && input.offsetParent !== null) break;
                 }}
 
                 if (!input) return {{ ok: false, msg: "input not found" }};
@@ -250,23 +270,16 @@ impl<'a> Poster<'a> {
 
                 return {{
                     ok: true,
-                    value: input.value,
-                    className: input.className,
-                    placeholder: input.getAttribute("placeholder") || ""
+                    value: input.value
                 }};
             }})();
             "#,
             tag = tag
         );
 
-        let ret = self
-            .page
-            .run_js(&input_script)
-            .map_err(BossError::map_element("写入自定义关键词失败"))?;
-
-        log::info!("[Debug] 自定义关键词写入结果: {:?}", ret);
-
-        Ok(format!("{:?}", ret).contains("ok") && format!("{:?}", ret).contains("true"))
+        let ret = self.page.run_js(&input_script).ok();
+        let res_str = format!("{:?}", ret);
+        Ok(res_str.contains("ok") && res_str.contains("true"))
     }
 
     /// 点击自定义关键词的小弹窗确认按钮。
@@ -282,37 +295,72 @@ impl<'a> Poster<'a> {
 
         for selector in selectors {
             if let Ok(Some(btn)) = self.page.ele(selector) {
-                btn.click()
-                    .map_err(BossError::map_element("点击自定义关键词确认按钮失败"))?;
-                return Ok(true);
+                if btn.is_displayed().unwrap_or(false) {
+                    btn.click().ok();
+                    return Ok(true);
+                }
             }
         }
 
         Ok(false)
     }
 
-    /// 点击关键词总弹窗的最终确认按钮。如果没有按钮，则认为无需确认。
+    /// 点击关键词总弹窗的最终确认按钮。使用 JS 增强识别和点击。
     fn try_click_tag_final_confirm(&mut self) -> BResult<bool> {
-        let selectors = [
-            ".job-skill-dialog .btn-v2.btn-sure-v2",
-            ".job-skill-dialog .btn-sure-v2",
-            ".ui-dialog .btn-v2.btn-sure-v2",
-            ".ui-dialog .btn-sure-v2",
-            ".dialog .btn-v2.btn-sure-v2",
-            ".dialog .btn-sure-v2",
-            ".btn-v2.btn-sure-v2",
-        ];
+        let confirm_script = r#"
+            (function() {
+                const selectors = [
+                    ".job-skill-dialog .btn-v2.btn-sure-v2",
+                    ".job-skill-dialog .btn-sure-v2",
+                    ".boss-dialog__footer .btn-primary",
+                    ".boss-dialog__footer .btn-sure",
+                    ".job-skill-select-wrap .btn-sure-v2",
+                    ".btns .btn-sure-v2",
+                    ".ui-dialog .btn-sure-v2",
+                    ".dialog .btn-sure-v2",
+                    ".btn-sure-v2"
+                ];
 
-        for selector in selectors {
-            if let Ok(Some(btn)) = self.page.ele(selector) {
-                btn.click()
-                    .map_err(BossError::map_element("点击最终确认按钮失败"))?;
-                sleep_random_ms(300, 500);
-                return Ok(true);
-            }
+                function isVisible(el) {
+                    const style = window.getComputedStyle(el);
+                    return style.display !== 'none' && style.visibility !== 'hidden' && el.offsetParent !== null;
+                }
+
+                // 1. 尝试选择器
+                for (const sel of selectors) {
+                    const btn = document.querySelector(sel);
+                    if (btn && isVisible(btn)) {
+                        btn.click();
+                        return { ok: true, method: "selector", selector: sel };
+                    }
+                }
+
+                // 2. 尝试文本匹配 (更通用)
+                const allElements = document.querySelectorAll('button, span, a');
+                for (const el of allElements) {
+                    const text = el.innerText || el.textContent || "";
+                    if (isVisible(el) && (text.trim() === "确定" || text.trim() === "确认")) {
+                        // 优先检查是否在弹窗内
+                        if (el.closest('.boss-dialog') || el.closest('.dialog') || el.closest('.ui-dialog') || el.closest('.job-skill-select-wrap')) {
+                            el.click();
+                            return { ok: true, method: "text-match", text: text.trim() };
+                        }
+                    }
+                }
+
+                return { ok: false, msg: "confirm button not found or not visible" };
+            })();
+        "#;
+
+        let ret = self.page.run_js(confirm_script).ok();
+        let res_str = format!("{:?}", ret);
+        if res_str.contains("ok") && res_str.contains("true") {
+            log::info!("[Info] 已通过脚本点击确认按钮: {}", res_str);
+            sleep_random_ms(500, 800);
+            return Ok(true);
         }
 
-        log::info!("[Info] 未找到关键词最终确认按钮，可能当前页面无需确认");
+        log::info!("[Info] 未找到关键词最终确认按钮: {}", res_str);
         Ok(false)
     }
 
@@ -343,10 +391,11 @@ impl<'a> Poster<'a> {
                 .map_err(BossError::map_cdp("查找关键词入口失败"))?;
 
             if let Some(ele) = custom_tag_dialog_ele {
-                ele.click()
-                    .map_err(BossError::map_element("点击关键词入口失败"))?;
-                sleep_random_ms(200, 500);
-                return Ok(true);
+                if ele.is_displayed().unwrap_or(false) {
+                    ele.click().map_err(BossError::map_element("点击关键词入口失败"))?;
+                    sleep_random_ms(500, 800);
+                    return Ok(true);
+                }
             }
         }
 

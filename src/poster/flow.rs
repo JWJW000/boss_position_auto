@@ -36,7 +36,9 @@ impl<'a> Poster<'a> {
 
         if let Ok(u) = self.page.url() {
             if u.contains("/job/edit") && !u.contains("login") {
-                log::info!("已经在发布页，跳过导航");
+                log::info!("已经在发布页，正在刷新以确保表单干净...");
+                self.page.refresh().map_err(BossError::map_cdp("刷新发布页失败"))?;
+                sleep_random_ms(2000, 3000);
                 return Ok(());
             }
         }
